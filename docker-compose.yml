@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  translation-pwa:
+    build: .
+    container_name: translation-pwa
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./database:/app/database
+      - ./backend/uploads:/app/backend/uploads
+      - ./static:/app/static
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - SMTP_SERVER=${SMTP_SERVER:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@ballerup.dk}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

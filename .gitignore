@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.log
+
+# Virtual Environment
+venv/
+.env/
+.venv/
+
+# Node / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+
+# Nix
+.result
+.cache/
+.nix-channels
+.nix-defexpr
+*.drv
+*.lock
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+*.tmp
+*.bak
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Generated icons / static assets (keep only source)
+static/generated/
+static/icons/
+
+# Temporary / Shell
+*.sh~
+*.tmp
+*.bak
+

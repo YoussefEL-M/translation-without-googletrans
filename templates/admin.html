@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation PWA - Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #1f2937;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        tr:hover {
+            background: #f9fafb;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+        }
+        
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-active {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-inactive {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        
+        .status-ended {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .status-active-conv {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .success {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .back-link:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .filter-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .filter-tab {
+            padding: 8px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 20px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .filter-tab.active {
+            border-color: #3b82f6;
+            background: #3b82f6;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .table-container {
+                font-size: 14px;
+            }
+            
+            th, td {
+                padding: 8px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">← Back to App</a>
+    
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔧 Admin Dashboard</h1>
+            <p>Translation PWA Administration</p>
+        </div>
+        
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalConversations">-</div>
+                <div class="stat-label">Total Conversations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalMessages">-</div>
+                <div class="stat-label">Total Messages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="activeConversations">-</div>
+                <div class="stat-label">Active Conversations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalUsers">-</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+        </div>
+        
+        <!-- Language Management -->
+        <div class="card">
+            <h2 class="section-title">Language Management</h2>
+            <div class="table-container">
+                <table id="languagesTable">
+                    <thead>
+                        <tr>
+                            <th>Language Code</th>
+                            <th>Language Name</th>
+                            <th>Status</th>
+                            <th>Installed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" class="loading">
+                                <div class="spinner"></div>
+                                Loading languages...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Conversation Management -->
+        <div class="card">
+            <h2 class="section-title">Conversation Management</h2>
+            
+            <div class="filter-tabs">
+                <div class="filter-tab active" data-filter="all">All</div>
+                <div class="filter-tab" data-filter="active">Active</div>
+                <div class="filter-tab" data-filter="ended">Ended</div>
+            </div>
+            
+            <input type="text" class="search-box" id="conversationSearch" placeholder="Search conversations...">
+            
+            <div class="table-container">
+                <table id="conversationsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>User</th>
+                            <th>Created</th>
+                            <th>Languages</th>
+                            <th>Messages</th>
+                            <th>Status</th>
+                            <th>Auto Email</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" class="loading">
+                                <div class="spinner"></div>
+                                Loading conversations...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn btn-success" onclick="exportConversations()">📊 Export All Conversations</button>
+                <button class="btn btn-secondary" onclick="refreshData()">🔄 Refresh Data</button>
+            </div>
+        </div>
+        
+        <!-- System Status -->
+        <div class="card">
+            <h2 class="section-title">System Status</h2>
+            <div id="systemStatus">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Checking system status...
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let conversations = [];
+        let languages = [];
+        let currentFilter = 'all';
+        
+        // Initialize admin dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAdminAccess();
+            loadLanguages();
+            loadConversations();
+            checkSystemStatus();
+            
+            // Set up search functionality
+            document.getElementById('conversationSearch').addEventListener('input', filterConversations);
+            
+            // Set up filter tabs
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    currentFilter = this.dataset.filter;
+                    filterConversations();
+                });
+            });
+        });
+        
+        async function checkAdminAccess() {
+            try {
+                const response = await fetch('/api/auth/status');
+                const data = await response.json();
+                
+                if (!data.authenticated || !data.user.is_admin) {
+                    alert('Admin access required');
+                    window.location.href = '/';
+                    return;
+                }
+            } catch (error) {
+                console.error('Admin check failed:', error);
+                alert('Failed to verify admin access');
+                window.location.href = '/';
+            }
+        }
+        
+        async function loadLanguages() {
+            try {
+                const response = await fetch('/api/admin/languages');
+                const data = await response.json();
+                
+                languages = data.languages;
+                updateLanguagesTable();
+            } catch (error) {
+                console.error('Failed to load languages:', error);
+                showError('Failed to load languages');
+            }
+        }
+        
+        function updateLanguagesTable() {
+            const tbody = document.querySelector('#languagesTable tbody');
+            
+            if (languages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #6b7280;">No languages found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = languages.map(lang => `
+                <tr>
+                    <td><code>${lang.language_code}</code></td>
+                    <td>${lang.language_name}</td>
+                    <td>
+                        <span class="status-badge ${lang.is_active ? 'status-active' : 'status-inactive'}">
+                            ${lang.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${new Date(lang.installed_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn ${lang.is_active ? 'btn-danger' : 'btn-success'}" 
+                                onclick="toggleLanguage('${lang.language_code}')">
+                            ${lang.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        async function toggleLanguage(languageCode) {
+            try {
+                const response = await fetch(`/api/admin/languages/${languageCode}/toggle`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showSuccess('Language status updated successfully');
+                    loadLanguages();
+                } else {
+                    showError(data.error || 'Failed to update language status');
+                }
+            } catch (error) {
+                console.error('Toggle language error:', error);
+                showError('Failed to update language status');
+            }
+        }
+        
+        async function loadConversations() {
+            try {
+                const response = await fetch('/api/admin/conversations');
+                const data = await response.json();
+                
+                conversations = data.conversations;
+                updateConversationsTable();
+                updateStats();
+            } catch (error) {
+                console.error('Failed to load conversations:', error);
+                showError('Failed to load conversations');
+            }
+        }
+        
+        function updateConversationsTable() {
+            const tbody = document.querySelector('#conversationsTable tbody');
+            
+            if (conversations.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #6b7280;">No conversations found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = conversations.map(conv => `
+                <tr>
+                    <td><code>${conv.id.substring(0, 8)}...</code></td>
+                    <td>${conv.email}</td>
+                    <td>${new Date(conv.created_at).toLocaleDateString()}</td>
+                    <td>${conv.input_language} → ${conv.output_language}</td>
+                    <td>${conv.message_count || 0}</td>
+                    <td>
+                        <span class="status-badge ${conv.ended ? 'status-ended' : 'status-active-conv'}">
+                            ${conv.ended ? 'Ended' : 'Active'}
+                        </span>
+                    </td>
+                    <td>${conv.auto_email ? '✅' : '❌'}</td>
+                    <td>
+                        <button class="btn btn-secondary" onclick="viewConversation('${conv.id}')">
+                            👁️ View
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function filterConversations() {
+            const searchTerm = document.getElementById('conversationSearch').value.toLowerCase();
+            const tbody = document.querySelector('#conversationsTable tbody');
+            
+            let filteredConversations = conversations;
+            
+            // Apply status filter
+            if (currentFilter === 'active') {
+                filteredConversations = filteredConversations.filter(conv => !conv.ended);
+            } else if (currentFilter === 'ended') {
+                filteredConversations = filteredConversations.filter(conv => conv.ended);
+            }
+            
+            // Apply search filter
+            if (searchTerm) {
+                filteredConversations = filteredConversations.filter(conv => 
+                    conv.id.toLowerCase().includes(searchTerm) ||
+                    conv.email.toLowerCase().includes(searchTerm) ||
+                    conv.input_language.toLowerCase().includes(searchTerm) ||
+                    conv.output_language.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Update table with filtered results
+            if (filteredConversations.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #6b7280;">No conversations match your criteria</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = filteredConversations.map(conv => `
+                <tr>
+                    <td><code>${conv.id.substring(0, 8)}...</code></td>
+                    <td>${conv.email}</td>
+                    <td>${new Date(conv.created_at).toLocaleDateString()}</td>
+                    <td>${conv.input_language} → ${conv.output_language}</td>
+                    <td>${conv.message_count || 0}</td>
+                    <td>
+                        <span class="status-badge ${conv.ended ? 'status-ended' : 'status-active-conv'}">
+                            ${conv.ended ? 'Ended' : 'Active'}
+                        </span>
+                    </td>
+                    <td>${conv.auto_email ? '✅' : '❌'}</td>
+                    <td>
+                        <button class="btn btn-secondary" onclick="viewConversation('${conv.id}')">
+                            👁️ View
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function updateStats() {
+            const totalConversations = conversations.length;
+            const activeConversations = conversations.filter(conv => !conv.ended).length;
+            const totalMessages = conversations.reduce((sum, conv) => sum + (conv.message_count || 0), 0);
+            const totalUsers = new Set(conversations.map(conv => conv.email)).size;
+            
+            document.getElementById('totalConversations').textContent = totalConversations;
+            document.getElementById('totalMessages').textContent = totalMessages;
+            document.getElementById('activeConversations').textContent = activeConversations;
+            document.getElementById('totalUsers').textContent = totalUsers;
+        }
+        
+        async function exportConversations() {
+            try {
+                const response = await fetch('/api/admin/export');
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `conversations_export_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showSuccess('Conversations exported successfully');
+                } else {
+                    showError('Failed to export conversations');
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                showError('Failed to export conversations');
+            }
+        }
+        
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('systemStatus');
+                
+                statusDiv.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                        <div style="background: #f9fafb; padding: 16px; border-radius: 8px;">
+                            <h3>Server Status</h3>
+                            <p><strong>Status:</strong> <span style="color: #10b981;">✅ Healthy</span></p>
+                            <p><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div style="background: #f9fafb; padding: 16px; border-radius: 8px;">
+                            <h3>Whisper Model</h3>
+                            <p><strong>Status:</strong> <span style="color: ${data.whisper_loaded ? '#10b981' : '#ef4444'};">${data.whisper_loaded ? '✅ Loaded' : '❌ Not Loaded'}</span></p>
+                        </div>
+                        <div style="background: #f9fafb; padding: 16px; border-radius: 8px;">
+                            <h3>Text-to-Speech</h3>
+                            <p><strong>Status:</strong> <span style="color: ${data.tts_loaded ? '#10b981' : '#ef4444'};">${data.tts_loaded ? '✅ Loaded' : '❌ Not Loaded'}</span></p>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('System status check failed:', error);
+                document.getElementById('systemStatus').innerHTML = 
+                    '<div class="error">Failed to check system status</div>';
+            }
+        }
+        
+        function viewConversation(conversationId) {
+            // This would open a modal or navigate to a detailed view
+            alert(`View conversation ${conversationId} - Feature coming soon!`);
+        }
+        
+        function refreshData() {
+            loadLanguages();
+            loadConversations();
+            checkSystemStatus();
+            showSuccess('Data refreshed successfully');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(errorDiv, container.firstChild);
+            
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success';
+            successDiv.textContent = message;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(successDiv, container.firstChild);
+            
+            setTimeout(() => {
+                successDiv.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
