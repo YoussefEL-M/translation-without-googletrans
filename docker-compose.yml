@@ -10,6 +10,7 @@ services:
       - ./database:/app/database
       - ./backend/uploads:/app/backend/uploads
       - ./static:/app/static
+      - ./templates:/app/templates
     environment:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
       - SMTP_SERVER=${SMTP_SERVER:-localhost}

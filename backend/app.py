@@ -31,8 +31,7 @@ from flask_cors import CORS
 import whisper
 import torch
 import numpy as np
-import argostranslate.package
-import argostranslate.translate
+from googletrans import Translator
 from pydub import AudioSegment
 import io
 import ffmpeg
@@ -93,8 +92,8 @@ class Config:
 
 # Initialize Flask app
 app = Flask(__name__, 
-           template_folder='/opt/praktik/translation-pwa/templates',
-           static_folder='/opt/praktik/translation-pwa/static')
+           template_folder='/app/templates',
+           static_folder='/app/static')
 app.config.from_object(Config)
 
 # Initialize extensions
@@ -234,40 +233,15 @@ def init_speech_recognition():
         logger.info("Speech recognition initialized")
 
 def ensure_translation_model(from_code: str, to_code: str):
-    """Ensure translation model is installed"""
+    """Ensure translation is available (googletrans is always available)"""
     try:
-        installed_langs = argostranslate.translate.get_installed_languages()
-        from_lang = next((l for l in installed_langs if l.code == from_code), None)
-        to_lang = next((l for l in installed_langs if l.code == to_code), None)
-        
-        if from_lang and to_lang:
-            try:
-                from_lang.get_translation(to_lang)
-                logger.info(f"Translation {from_code} → {to_code} already installed")
-                return True
-            except Exception:
-                pass
-        
-        logger.info(f"Installing translation model from {from_code} to {to_code}...")
-        argostranslate.package.update_package_index()
-        available_packages = argostranslate.package.get_available_packages()
-        
-        package_to_install = next(
-            (p for p in available_packages if p.from_code == from_code and p.to_code == to_code), 
-            None
-        )
-        
-        if package_to_install:
-            path = package_to_install.download()
-            argostranslate.package.install_from_path(path)
-            logger.info(f"Installed {from_code} → {to_code} model")
-            return True
-        else:
-            logger.warning(f"No model available for {from_code} → {to_code}")
-            return False
-            
+        translator = Translator()
+        # Test translation to ensure it works
+        test_result = translator.translate("test", src=from_code, dest=to_code)
+        logger.info(f"Translation {from_code} → {to_code} is available")
+        return True
     except Exception as e:
-        logger.error(f"Error ensuring translation model: {e}")
+        logger.error(f"Translation {from_code} → {to_code} not available: {e}")
         return False
 
 def transcribe_audio(audio_data: bytes, language: str = None) -> Dict:
@@ -304,27 +278,19 @@ def transcribe_audio(audio_data: bytes, language: str = None) -> Dict:
         return {'text': '', 'language': language, 'error': str(e)}
 
 def translate_text(text: str, from_lang: str, to_lang: str) -> str:
-    """Translate text using Argos Translate"""
+    """Translate text using Google Translate"""
     try:
         if not text.strip():
             return ""
         
-        # Ensure translation model is installed
-        if not ensure_translation_model(from_lang, to_lang):
-            return text  # Return original text if translation fails
+        # Handle auto-detect
+        if from_lang == 'auto':
+            from_lang = None
         
-        installed_langs = argostranslate.translate.get_installed_languages()
-        from_language = next((l for l in installed_langs if l.code == from_lang), None)
-        to_language = next((l for l in installed_langs if l.code == to_lang), None)
+        translator = Translator()
+        result = translator.translate(text, src=from_lang, dest=to_lang)
         
-        if not from_language or not to_language:
-            logger.error(f"Language not found: {from_lang} or {to_lang}")
-            return text
-        
-        translation = from_language.get_translation(to_language)
-        translated_text = translation.translate(text)
-        
-        return translated_text
+        return result.text
         
     except Exception as e:
         logger.error(f"Translation error: {e}")
