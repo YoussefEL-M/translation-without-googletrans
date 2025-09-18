@@ -11,12 +11,12 @@
     <meta name="apple-mobile-web-app-title" content="TranslatePWA">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="/manifest.json">
     
     <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="./static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="./static/favicon-16x16.png">
-    <link rel="apple-touch-icon" href="./static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
     
     <!-- Styles -->
     <style>
@@ -384,6 +384,9 @@
         <!-- Admin Link -->
         <a href="/admin" class="admin-link">Admin</a>
         
+        <!-- Test Link -->
+        <a href="/test-whisper" class="admin-link" style="top: 60px;">Test Whisper</a>
+        
         <!-- Authentication Section -->
         <div id="authSection" class="auth-section active">
             <div class="card">
@@ -424,7 +427,7 @@
         <!-- Main Application Section -->
         <div id="mainSection" class="auth-section">
             <div class="card">
-                <h2>Translation Settings</h2>
+                <h2>Translation & Conversation</h2>
                 
                 <div class="language-selector">
                     <div class="form-group">
@@ -448,14 +451,10 @@
                         <label for="autoEmail">Send all conversations to my email automatically</label>
                     </div>
                 </div>
-            </div>
-            
-            <div class="card">
-                <h2>Conversation</h2>
                 
-                <div class="conversation-controls">
-                    <button class="btn btn-success" onclick="startConversation()">Start New Conversation</button>
-                    <button class="btn btn-danger" onclick="endConversation()" id="endBtn" disabled>End Conversation</button>
+                <!-- Full width conversation button -->
+                <div style="margin: 20px 0;">
+                    <button class="btn btn-success" onclick="toggleConversation()" id="conversationToggleBtn" style="width: 100%; margin-bottom: 0;">Start New Conversation</button>
                 </div>
                 
                 <div class="recording-section">
@@ -496,10 +495,42 @@
             <div class="spinner"></div>
             <p>Processing...</p>
         </div>
+        
+        <!-- Language Switch Modal -->
+        <div id="languageModal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+            <div style="background: white; padding: 30px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+                <h2 style="margin-bottom: 20px; color: #1f2937; text-align: center;">🌍 Switch Languages</h2>
+                <p style="color: #6b7280; margin-bottom: 20px; text-align: center;">Change the input and output languages for your current conversation</p>
+                
+                <div style="display: flex; justify-content: center; gap: 20px; align-items: center; margin-bottom: 30px; flex-wrap: wrap;">
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <label style="font-size: 14px; color: #374151; margin-bottom: 8px; font-weight: 600;">From</label>
+                        <select id="modalInputLang" style="padding: 12px; border-radius: 8px; border: 2px solid #e5e7eb; font-size: 16px; min-width: 140px;">
+                            <option value="auto">Auto-detect</option>
+                        </select>
+                    </div>
+                    <span style="font-size: 28px; color: #3b82f6;">→</span>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <label style="font-size: 14px; color: #374151; margin-bottom: 8px; font-weight: 600;">To</label>
+                        <select id="modalOutputLang" style="padding: 12px; border-radius: 8px; border: 2px solid #e5e7eb; font-size: 16px; min-width: 140px;">
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 15px; justify-content: center;">
+                    <button onclick="hideLanguageModal()" style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                        Cancel
+                    </button>
+                    <button onclick="applyLanguageChange()" style="padding: 12px 24px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                        🔄 Apply Changes
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Socket.IO -->
-    <script src="./static/socket.io.min.js"></script>
+    <script src="/static/socket.io.min.js"></script>
     
     <script>
         // Global variables
@@ -530,7 +561,7 @@
         
         async function checkAuthStatus() {
             try {
-                const response = await fetch('./api/auth/status');
+                const response = await fetch('/api/auth/status');
                 const data = await response.json();
                 
                 if (data.authenticated) {
@@ -586,7 +617,7 @@
         
         function initializeSocket() {
             socket = io({
-                path: './socket.io/'
+                path: '/socket.io/'
             });
             
             socket.on('connect', function() {
@@ -619,7 +650,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('./api/auth/login', {
+                const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -695,6 +726,29 @@
             }
         }
         
+        function toggleConversation() {
+            if (currentConversationId) {
+                endConversation();
+            } else {
+                startConversation();
+            }
+        }
+        
+        function updateConversationButton() {
+            const btn = document.getElementById('conversationToggleBtn');
+            if (currentConversationId) {
+                btn.textContent = 'End Conversation';
+                btn.className = 'btn btn-danger';
+                btn.style.width = '100%';
+                btn.style.marginBottom = '0';
+            } else {
+                btn.textContent = 'Start New Conversation';
+                btn.className = 'btn btn-success';
+                btn.style.width = '100%';
+                btn.style.marginBottom = '0';
+            }
+        }
+        
         async function startConversation() {
             const inputLang = document.getElementById('inputLanguage').value;
             const outputLang = document.getElementById('outputLanguage').value;
@@ -708,7 +762,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('./api/conversations', {
+                const response = await fetch('/api/conversations', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -725,8 +779,12 @@
                 if (data.success) {
                     currentConversationId = data.conversation_id;
                     document.getElementById('recordBtn').disabled = false;
-                    document.getElementById('endBtn').disabled = false;
                     document.getElementById('emailBtn').disabled = false;
+                    updateConversationButton();
+                    
+                    
+                    // Populate modal language controls
+                    populateModalLanguageControls(inputLang, outputLang);
                     
                     // Join conversation room
                     socket.emit('join_conversation', { conversation_id: currentConversationId });
@@ -765,9 +823,12 @@
                     
                     currentConversationId = null;
                     document.getElementById('recordBtn').disabled = true;
-                    document.getElementById('endBtn').disabled = true;
                     document.getElementById('emailBtn').disabled = true;
                     document.getElementById('playBtn').disabled = true;
+                    updateConversationButton();
+                    
+                    
+                    
                     
                     showSuccess('Conversation ended successfully!');
                     await loadConversations();
@@ -777,6 +838,97 @@
             } catch (error) {
                 console.error('End conversation error:', error);
                 showError('Failed to end conversation');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        
+        function populateModalLanguageControls(inputLang, outputLang) {
+            const inputSelect = document.getElementById('modalInputLang');
+            const outputSelect = document.getElementById('modalOutputLang');
+            
+            // Clear existing options (except auto-detect for input)
+            inputSelect.innerHTML = '<option value="auto">Auto-detect</option>';
+            outputSelect.innerHTML = '';
+            
+            availableLanguages.forEach(lang => {
+                if (lang.is_active) {
+                    const inputOption = document.createElement('option');
+                    inputOption.value = lang.language_code;
+                    inputOption.textContent = lang.language_name;
+                    inputSelect.appendChild(inputOption);
+                    
+                    const outputOption = document.createElement('option');
+                    outputOption.value = lang.language_code;
+                    outputOption.textContent = lang.language_name;
+                    outputSelect.appendChild(outputOption);
+                }
+            });
+            
+            // Set current values
+            inputSelect.value = inputLang;
+            outputSelect.value = outputLang;
+        }
+        
+        function showLanguageModal() {
+            // Get current language settings from main settings
+            const currentInputLang = document.getElementById('inputLanguage')?.value || 'auto';
+            const currentOutputLang = document.getElementById('outputLanguage')?.value || 'en';
+            
+            // Populate modal with current settings
+            populateModalLanguageControls(currentInputLang, currentOutputLang);
+            
+            // Show modal
+            document.getElementById('languageModal').classList.remove('hidden');
+        }
+        
+        function hideLanguageModal() {
+            document.getElementById('languageModal').classList.add('hidden');
+        }
+        
+        async function applyLanguageChange() {
+            if (!currentConversationId) return;
+            
+            const inputLang = document.getElementById('modalInputLang').value;
+            const outputLang = document.getElementById('modalOutputLang').value;
+            
+            if (!outputLang) {
+                showError('Please select an output language');
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`/api/conversations/${currentConversationId}/languages`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        input_language: inputLang,
+                        output_language: outputLang
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showSuccess(`🌍 Languages updated! Now translating from ${inputLang} to ${outputLang}`);
+                    
+                    // Update main language settings to match
+                    document.getElementById('inputLanguage').value = inputLang;
+                    document.getElementById('outputLanguage').value = outputLang;
+                    
+                    // Hide modal
+                    hideLanguageModal();
+                } else {
+                    showError(data.error || 'Failed to update language settings');
+                }
+            } catch (error) {
+                console.error('Apply language change error:', error);
+                showError('Failed to update language settings');
             } finally {
                 showLoading(false);
             }
@@ -829,7 +981,7 @@
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'recording.webm');
                 
-                const response = await fetch(`./api/conversations/${currentConversationId}/messages`, {
+                const response = await fetch(`/api/conversations/${currentConversationId}/messages`, {
                     method: 'POST',
                     body: formData
                 });
@@ -878,9 +1030,13 @@
             
             const timestamp = new Date(message.timestamp).toLocaleTimeString();
             
+            // Get current language settings for display
+            const inputLang = document.getElementById('inputLanguage')?.value || 'auto';
+            const outputLang = document.getElementById('outputLanguage')?.value || 'en';
+            
             messageDiv.innerHTML = `
                 <div class="message-header">
-                    <span>You (${message.detected_language})</span>
+                    <span>You (${message.detected_language || inputLang}) → ${outputLang}</span>
                     <span>${timestamp}</span>
                 </div>
                 <div class="message-content">
@@ -930,39 +1086,69 @@
                 return;
             }
             
+            if (!lastTranslatedText.trim()) {
+                showError('No valid translation text to play');
+                return;
+            }
+            
             try {
-                const response = await fetch('./api/tts', {
+                console.log('Requesting TTS for:', lastTranslatedText.substring(0, 50) + '...');
+                
+                const response = await fetch('/api/tts', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        text: lastTranslatedText,
+                        text: lastTranslatedText.trim(),
                         language: document.getElementById('outputLanguage').value
                     })
                 });
                 
+                console.log('TTS response status:', response.status);
+                
                 if (response.ok) {
                     const audioBlob = await response.blob();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const audio = new Audio(audioUrl);
-                    audio.play();
+                    console.log('TTS audio blob size:', audioBlob.size);
                     
-                    audio.onended = () => {
-                        URL.revokeObjectURL(audioUrl);
-                    };
+                    if (audioBlob.size > 0) {
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audio = new Audio(audioUrl);
+                        
+                        audio.onloadeddata = () => {
+                            console.log('TTS audio loaded successfully');
+                        };
+                        
+                        audio.onerror = (e) => {
+                            console.error('TTS audio playback error:', e);
+                            showError('Failed to play audio');
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                        
+                        audio.onended = () => {
+                            console.log('TTS audio playback completed');
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                        
+                        await audio.play();
+                        showSuccess('Playing translation...');
+                    } else {
+                        showError('No audio data received');
+                    }
                 } else {
-                    showError('Failed to generate speech');
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    console.error('TTS API error:', errorData);
+                    showError(`TTS failed: ${errorData.error || 'Unknown error'}`);
                 }
             } catch (error) {
                 console.error('TTS error:', error);
-                showError('Failed to play translation');
+                showError(`Failed to play translation: ${error.message}`);
             }
         }
         
         async function loadConversations() {
             try {
-                const response = await fetch('./api/conversations');
+                const response = await fetch('/api/conversations');
                 const data = await response.json();
                 
                 const listDiv = document.getElementById('conversationList');
@@ -1007,6 +1193,47 @@
             
             inputSelect.value = outputValue === 'auto' ? 'auto' : outputValue;
             outputSelect.value = inputValue === 'auto' ? 'en' : inputValue;
+            
+            // If there's an active conversation, update the conversation languages
+            if (currentConversationId) {
+                updateConversationLanguagesFromSettings();
+            }
+        }
+        
+        async function updateConversationLanguagesFromSettings() {
+            if (!currentConversationId) return;
+            
+            const inputLang = document.getElementById('inputLanguage').value;
+            const outputLang = document.getElementById('outputLanguage').value;
+            
+            if (!outputLang) {
+                showError('Please select an output language');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/conversations/${currentConversationId}/languages`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        input_language: inputLang,
+                        output_language: outputLang
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showSuccess(`🔄 Languages switched! Now translating from ${inputLang} to ${outputLang}`);
+                } else {
+                    showError(data.error || 'Failed to switch languages');
+                }
+            } catch (error) {
+                console.error('Update conversation languages error:', error);
+                showError('Failed to switch languages');
+            }
         }
         
         function showAuthSection() {
@@ -1090,7 +1317,7 @@
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('./sw.js')
+                navigator.serviceWorker.register('/sw.js')
                     .then(function(registration) {
                         console.log('ServiceWorker registration successful');
                     })

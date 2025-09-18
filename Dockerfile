@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     python3-pyaudio \
     curl \
+    libsndfile1 \
+    libsndfile1-dev \
+    festival \
+    festvox-kallpc16k \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

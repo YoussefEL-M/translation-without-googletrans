@@ -35,7 +35,8 @@ from googletrans import Translator
 from pydub import AudioSegment
 import io
 import ffmpeg
-import pyttsx3
+import subprocess
+from TTS.api import TTS
 import speech_recognition as sr
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -199,17 +200,33 @@ def init_database():
         logger.info("Database initialized successfully")
 
 def load_whisper_model():
-    """Load Whisper model on demand"""
+    """Load Whisper model on demand - using same approach as working whisper app"""
     global whisper_model
     if whisper_model is None:
         logger.info("Loading Whisper model...")
         try:
-            whisper_model = whisper.load_model("base", device="cuda" if torch.cuda.is_available() else "cpu")
-            logger.info("Whisper model loaded successfully")
+            # Use the same approach as working whisper app
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"Using device: {device}")
+            
+            # Try turbo model first (same as working app)
+            whisper_model = whisper.load_model("turbo", device=device)
+            logger.info(f"Whisper turbo model loaded successfully on {device}")
+        except torch.cuda.OutOfMemoryError:
+            logger.warning("Turbo model too large, falling back to base model")
+            whisper_model = whisper.load_model("base", device=device)
+            logger.info(f"Whisper base model loaded successfully on {device}")
         except Exception as e:
-            logger.error(f"Failed to load Whisper model: {e}")
-            whisper_model = whisper.load_model("tiny", device="cpu")
-            logger.info("Whisper model loaded on CPU with tiny model")
+            logger.error(f"Failed to load Whisper turbo model: {e}")
+            try:
+                # Fallback to base model
+                whisper_model = whisper.load_model("base", device=device)
+                logger.info(f"Whisper base model loaded successfully on {device}")
+            except Exception as e2:
+                logger.error(f"Failed to load Whisper base model: {e2}")
+                # Last resort: small model
+                whisper_model = whisper.load_model("small", device=device)
+                logger.info(f"Whisper small model loaded successfully on {device}")
     return whisper_model
 
 def init_tts():
@@ -217,13 +234,37 @@ def init_tts():
     global tts_engine
     if tts_engine is None:
         try:
-            tts_engine = pyttsx3.init()
-            # Configure TTS settings
-            voices = tts_engine.getProperty('voices')
-            tts_engine.setProperty('rate', 150)  # Speed of speech
-            logger.info("TTS engine initialized successfully")
+            # Try Coqui TTS with a lighter model first
+            logger.info("Initializing Coqui TTS...")
+            tts_engine = TTS("tts_models/en/ljspeech/tacotron2-DDC")
+            logger.info("TTS engine initialized with Coqui TTS (Tacotron2)")
         except Exception as e:
-            logger.error(f"Failed to initialize TTS: {e}")
+            logger.error(f"Failed to initialize Coqui TTS: {e}")
+            # Fallback to Festival
+            try:
+                result = subprocess.run(['festival', '--version'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    tts_engine = 'festival'
+                    logger.info("TTS engine fallback to Festival")
+                else:
+                    logger.error("Festival not available")
+                    tts_engine = None
+            except Exception as e2:
+                logger.error(f"Failed to initialize Festival: {e2}")
+                # Final fallback to espeak
+                try:
+                    result = subprocess.run(['espeak', '--version'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        tts_engine = 'espeak'
+                        logger.info("TTS engine final fallback to espeak")
+                    else:
+                        logger.error("espeak not available")
+                        tts_engine = None
+                except Exception as e3:
+                    logger.error(f"Failed to initialize espeak: {e3}")
+                    tts_engine = None
 
 def init_speech_recognition():
     """Initialize speech recognition"""
@@ -245,36 +286,61 @@ def ensure_translation_model(from_code: str, to_code: str):
         return False
 
 def transcribe_audio(audio_data: bytes, language: str = None) -> Dict:
-    """Transcribe audio using Whisper"""
+    """Transcribe audio using Whisper - simplified approach like working whisper app"""
     try:
         model = load_whisper_model()
         
-        # Convert audio bytes to numpy array
-        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
-        audio_array = np.array(audio_segment.get_array_of_samples())
+        logger.info(f"Audio data length: {len(audio_data)} bytes")
         
-        # Convert to float32 and normalize
-        if audio_segment.sample_width == 2:
-            audio_array = audio_array.astype(np.float32) / 32768.0
-        elif audio_segment.sample_width == 4:
-            audio_array = audio_array.astype(np.float32) / 2147483648.0
+        # Use the same approach as working whisper app - save to temp file and use ffmpeg
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_input:
+            tmp_input.write(audio_data)
+            tmp_input_path = tmp_input.name
         
-        # Transcribe
-        transcribe_kwargs = {}
-        if language and language != 'auto':
-            whisper_lang = Config.WHISPER_LANGUAGES.get(language, language)
-            transcribe_kwargs['language'] = whisper_lang
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+            tmp_wav_path = tmp_wav.name
         
-        result = model.transcribe(audio_array, **transcribe_kwargs)
-        
-        return {
-            'text': result['text'].strip(),
-            'language': result.get('language', language),
-            'confidence': result.get('segments', [{}])[0].get('avg_logprob', 0) if result.get('segments') else 0
-        }
+        try:
+            # Convert using ffmpeg like the working whisper app
+            ffmpeg.input(tmp_input_path).output(tmp_wav_path, format="wav", ar="16k").run(quiet=True, overwrite_output=True)
+            
+            # Prepare transcription kwargs like working whisper app
+            transcribe_kwargs = {}
+            if language and language != 'auto':
+                whisper_lang = Config.WHISPER_LANGUAGES.get(language, language)
+                transcribe_kwargs['language'] = whisper_lang
+            
+            logger.info(f"Transcribing audio file: {tmp_wav_path}")
+            
+            # Transcribe using the same approach as working whisper app
+            result = model.transcribe(tmp_wav_path, **transcribe_kwargs)
+            
+            # Debug: Check what Whisper returned
+            logger.info(f"Whisper result: {result}")
+            
+            # Extract text and clean it up
+            text = result.get('text', '').strip()
+            if not text:
+                logger.warning("Whisper returned empty text")
+                return {'text': '', 'language': language, 'error': 'No speech detected'}
+            
+            return {
+                'text': text,
+                'language': result.get('language', language),
+                'confidence': result.get('segments', [{}])[0].get('avg_logprob', 0) if result.get('segments') else 0
+            }
+            
+        finally:
+            # Clean up temp files
+            if os.path.exists(tmp_input_path):
+                os.remove(tmp_input_path)
+            if os.path.exists(tmp_wav_path):
+                os.remove(tmp_wav_path)
         
     except Exception as e:
         logger.error(f"Transcription error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {'text': '', 'language': language, 'error': str(e)}
 
 def translate_text(text: str, from_lang: str, to_lang: str) -> str:
@@ -297,28 +363,99 @@ def translate_text(text: str, from_lang: str, to_lang: str) -> str:
         return text
 
 def text_to_speech(text: str, language: str) -> bytes:
-    """Convert text to speech"""
+    """Convert text to speech using Coqui TTS, Festival, or espeak fallback"""
     try:
         init_tts()
         
-        # Set language-specific voice if available
-        voices = tts_engine.getProperty('voices')
-        for voice in voices:
-            if language in voice.id.lower() or language in voice.name.lower():
-                tts_engine.setProperty('voice', voice.id)
-                break
+        if tts_engine is None:
+            logger.error("TTS engine not available")
+            return b''
         
-        # Save to temporary file
+        # Create temporary file for output
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-            tts_engine.save_to_file(text, tmp_file.name)
-            tts_engine.runAndWait()
-            
-            # Read the generated audio file
-            with open(tmp_file.name, 'rb') as f:
-                audio_data = f.read()
-            
-            os.unlink(tmp_file.name)
-            return audio_data
+            try:
+                if tts_engine != 'festival' and tts_engine != 'espeak':
+                    # Use Coqui TTS (best quality)
+                    logger.info(f"Using Coqui TTS for text: {text[:50]}...")
+                    
+                    # Generate speech with Coqui TTS
+                    tts_engine.tts_to_file(text=text, file_path=tmp_file.name)
+                    
+                elif tts_engine == 'festival':
+                    # Use Festival (fallback)
+                    logger.info(f"Using Festival fallback for text: {text[:50]}...")
+                    
+                    # Festival script to generate speech
+                    festival_script = f"""
+                    (set! utt1 (Utterance Text "{text}"))
+                    (utt.synth utt1)
+                    (utt.save.wave utt1 "{tmp_file.name}")
+                    """
+                    
+                    cmd = ['festival', '--pipe']
+                    result = subprocess.run(cmd, input=festival_script, 
+                                          capture_output=True, text=True, timeout=30)
+                    
+                    if result.returncode != 0:
+                        logger.error(f"Festival failed: {result.stderr}")
+                        return b''
+                    
+                else:
+                    # Final fallback to espeak
+                    logger.info(f"Using espeak final fallback for text: {text[:50]}...")
+                    
+                    voice_map = {
+                        'en': 'en', 'es': 'es', 'fr': 'fr', 'de': 'de', 'it': 'it',
+                        'pt': 'pt', 'ru': 'ru', 'pl': 'pl', 'da': 'da', 'sv': 'sv',
+                        'no': 'no', 'fi': 'fi', 'nl': 'nl', 'cs': 'cs', 'sk': 'sk',
+                        'hu': 'hu', 'ro': 'ro', 'bg': 'bg', 'hr': 'hr', 'sl': 'sl',
+                        'et': 'et', 'lv': 'lv', 'lt': 'lt', 'el': 'el', 'tr': 'tr',
+                        'ar': 'ar', 'he': 'he', 'hi': 'hi', 'zh': 'zh', 'ja': 'ja',
+                        'ko': 'ko', 'th': 'th', 'vi': 'vi'
+                    }
+                    
+                    voice = voice_map.get(language, 'en')
+                    
+                    cmd = [
+                        'espeak',
+                        '-v', voice,
+                        '-s', '150',
+                        '-w', tmp_file.name,
+                        text
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    
+                    if result.returncode != 0:
+                        logger.error(f"espeak failed: {result.stderr}")
+                        return b''
+                
+                # Wait a bit for file to be written
+                import time
+                time.sleep(1.0)  # Give more time for Coqui TTS
+                
+                # Read the generated audio file
+                if os.path.exists(tmp_file.name) and os.path.getsize(tmp_file.name) > 0:
+                    with open(tmp_file.name, 'rb') as f:
+                        audio_data = f.read()
+                    
+                    os.unlink(tmp_file.name)
+                    logger.info(f"TTS generated {len(audio_data)} bytes for text: {text[:50]}...")
+                    return audio_data
+                else:
+                    logger.error("TTS file was not created or is empty")
+                    return b''
+                    
+            except subprocess.TimeoutExpired:
+                logger.error("TTS generation timed out")
+                if os.path.exists(tmp_file.name):
+                    os.unlink(tmp_file.name)
+                return b''
+            except Exception as e:
+                logger.error(f"TTS file generation error: {e}")
+                if os.path.exists(tmp_file.name):
+                    os.unlink(tmp_file.name)
+                return b''
             
     except Exception as e:
         logger.error(f"TTS error: {e}")
@@ -484,6 +621,33 @@ def logout():
     session.clear()
     return jsonify({'success': True})
 
+@app.route('/api/auth/make-admin', methods=['POST'])
+def make_admin():
+    """Make a user admin (for initial setup)"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').lower().strip()
+        admin_key = data.get('admin_key', '')
+        
+        # Simple admin key check (in production, use proper secret management)
+        if admin_key != 'ballerup-admin-2024':
+            return jsonify({'error': 'Invalid admin key'}), 403
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET is_admin = TRUE WHERE email = ?', (email,))
+            
+            if cursor.rowcount == 0:
+                return jsonify({'error': 'User not found'}), 404
+            
+            conn.commit()
+            
+        return jsonify({'success': True, 'message': f'User {email} is now an admin'})
+            
+    except Exception as e:
+        logger.error(f"Make admin error: {e}")
+        return jsonify({'error': 'Failed to make user admin'}), 500
+
 @app.route('/api/auth/status', methods=['GET'])
 def auth_status():
     """Check authentication status"""
@@ -552,7 +716,7 @@ def create_conversation():
         return jsonify({'error': 'Failed to create conversation'}), 500
 
 @app.route('/api/conversations/<conversation_id>/messages', methods=['POST'])
-def add_message():
+def add_message(conversation_id):
     """Add a message to a conversation"""
     try:
         if 'user_email' not in session:
@@ -652,8 +816,6 @@ def get_conversation():
         if 'user_email' not in session:
             return jsonify({'error': 'Authentication required'}), 401
         
-        conversation_id = request.view_args['conversation_id']
-        
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
@@ -712,13 +874,11 @@ def get_user_conversations():
         return jsonify({'error': 'Failed to get conversations'}), 500
 
 @app.route('/api/conversations/<conversation_id>/end', methods=['POST'])
-def end_conversation():
+def end_conversation(conversation_id):
     """End a conversation"""
     try:
         if 'user_email' not in session:
             return jsonify({'error': 'Authentication required'}), 401
-        
-        conversation_id = request.view_args['conversation_id']
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -739,14 +899,61 @@ def end_conversation():
         logger.error(f"Error ending conversation: {e}")
         return jsonify({'error': 'Failed to end conversation'}), 500
 
-@app.route('/api/conversations/<conversation_id>/email', methods=['POST'])
-def send_conversation_email():
-    """Send conversation via email"""
+@app.route('/api/conversations/<conversation_id>/languages', methods=['PUT'])
+def update_conversation_languages(conversation_id):
+    """Update conversation language settings"""
     try:
         if 'user_email' not in session:
             return jsonify({'error': 'Authentication required'}), 401
         
-        conversation_id = request.view_args['conversation_id']
+        data = request.get_json()
+        input_lang = data.get('input_language', 'auto')
+        output_lang = data.get('output_language')
+        
+        if not output_lang:
+            return jsonify({'error': 'Output language is required'}), 400
+        
+        if output_lang not in Config.SUPPORTED_LANGUAGES:
+            return jsonify({'error': 'Unsupported output language'}), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if conversation exists and belongs to user
+            cursor.execute('''
+                SELECT * FROM conversations 
+                WHERE id = ? AND user_email = ? AND ended = FALSE
+            ''', (conversation_id, session['user_email']))
+            conversation = cursor.fetchone()
+            
+            if not conversation:
+                return jsonify({'error': 'Active conversation not found'}), 404
+            
+            # Update language settings
+            cursor.execute('''
+                UPDATE conversations 
+                SET input_language = ?, output_language = ?
+                WHERE id = ? AND user_email = ?
+            ''', (input_lang, output_lang, conversation_id, session['user_email']))
+            
+            conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'input_language': input_lang,
+            'output_language': output_lang
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating conversation languages: {e}")
+        return jsonify({'error': 'Failed to update language settings'}), 500
+
+@app.route('/api/conversations/<conversation_id>/email', methods=['POST'])
+def send_conversation_email(conversation_id):
+    """Send conversation via email"""
+    try:
+        if 'user_email' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -795,12 +1002,20 @@ def text_to_speech_endpoint():
         text = data.get('text', '')
         language = data.get('language', 'en')
         
+        logger.info(f"TTS request: text='{text[:50]}...', language='{language}'")
+        
         if not text:
+            logger.warning("TTS request with empty text")
             return jsonify({'error': 'Text required'}), 400
+        
+        if not text.strip():
+            logger.warning("TTS request with whitespace-only text")
+            return jsonify({'error': 'Text cannot be empty'}), 400
         
         audio_data = text_to_speech(text, language)
         
-        if audio_data:
+        if audio_data and len(audio_data) > 0:
+            logger.info(f"TTS success: generated {len(audio_data)} bytes")
             return send_file(
                 io.BytesIO(audio_data),
                 mimetype='audio/wav',
@@ -808,11 +1023,12 @@ def text_to_speech_endpoint():
                 download_name='speech.wav'
             )
         else:
-            return jsonify({'error': 'TTS failed'}), 500
+            logger.error("TTS failed: no audio data generated")
+            return jsonify({'error': 'TTS failed - no audio generated'}), 500
             
     except Exception as e:
-        logger.error(f"TTS error: {e}")
-        return jsonify({'error': 'TTS failed'}), 500
+        logger.error(f"TTS endpoint error: {e}")
+        return jsonify({'error': f'TTS failed: {str(e)}'}), 500
 
 # Admin routes
 @app.route('/api/admin/languages', methods=['GET'])
@@ -836,13 +1052,11 @@ def admin_get_languages():
         return jsonify({'error': 'Failed to get languages'}), 500
 
 @app.route('/api/admin/languages/<language_code>/toggle', methods=['POST'])
-def admin_toggle_language():
+def admin_toggle_language(language_code):
     """Admin: Toggle language availability"""
     try:
         if not session.get('is_admin'):
             return jsonify({'error': 'Admin access required'}), 403
-        
-        language_code = request.view_args['language_code']
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -962,6 +1176,90 @@ def admin():
         return redirect(url_for('index'))
     return render_template('admin.html')
 
+@app.route('/test-whisper')
+def test_whisper_page():
+    """Serve a simple test page for Whisper functionality"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Test Whisper</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            .container { max-width: 600px; }
+            .form-group { margin: 20px 0; }
+            input[type="file"] { margin: 10px 0; }
+            button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            button:hover { background: #0056b3; }
+            .result { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+            .error { background: #f8d7da; color: #721c24; }
+            .success { background: #d4edda; color: #155724; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Test Whisper Transcription</h1>
+            <p>Upload an audio file to test the Whisper transcription functionality.</p>
+            
+            <form id="testForm">
+                <div class="form-group">
+                    <label for="audioFile">Select Audio File:</label><br>
+                    <input type="file" id="audioFile" name="file" accept=".mp3,.wav,.flac,.m4a,.ogg,.webm" required>
+                </div>
+                <button type="submit">Test Transcription</button>
+            </form>
+            
+            <div id="result"></div>
+        </div>
+        
+        <script>
+            document.getElementById('testForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const fileInput = document.getElementById('audioFile');
+                const resultDiv = document.getElementById('result');
+                
+                if (!fileInput.files[0]) {
+                    resultDiv.innerHTML = '<div class="result error">Please select a file first.</div>';
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                resultDiv.innerHTML = '<div class="result">Processing...</div>';
+                
+                try {
+                    const response = await fetch('/api/test-whisper', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        resultDiv.innerHTML = `
+                            <div class="result success">
+                                <h3>Transcription Result:</h3>
+                                <p><strong>Text:</strong> ${data.transcript || 'No text detected'}</p>
+                                <p><strong>Language:</strong> ${data.language || 'Unknown'}</p>
+                                <p><strong>Confidence:</strong> ${data.confidence || 'N/A'}</p>
+                                <p><strong>Audio Size:</strong> ${data.audio_size} bytes</p>
+                                ${data.error ? `<p><strong>Error:</strong> ${data.error}</p>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        resultDiv.innerHTML = `<div class="result error">Error: ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    resultDiv.innerHTML = `<div class="result error">Network error: ${error.message}</div>`;
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
+
 @app.route('/manifest.json')
 def manifest():
     """PWA manifest"""
@@ -969,18 +1267,18 @@ def manifest():
         "name": "Translation PWA",
         "short_name": "TranslatePWA",
         "description": "Real-time translation service",
-        "start_url": "./",
+        "start_url": "/",
         "display": "standalone",
         "background_color": "#1f2937",
         "theme_color": "#3b82f6",
         "icons": [
             {
-                "src": "./static/icon-192.png",
+                "src": "/static/icon-192.png",
                 "sizes": "192x192",
                 "type": "image/png"
             },
             {
-                "src": "./static/icon-512.png", 
+                "src": "/static/icon-512.png", 
                 "sizes": "512x512",
                 "type": "image/png"
             }
@@ -1002,6 +1300,39 @@ def health():
         'whisper_loaded': whisper_model is not None,
         'tts_loaded': tts_engine is not None
     })
+
+# Test endpoint for Whisper
+@app.route('/api/test-whisper', methods=['POST'])
+def test_whisper():
+    """Test Whisper transcription with sample audio - same as working whisper app"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+        
+        audio_file = request.files['file']
+        if not audio_file.filename:
+            return jsonify({'error': 'No audio file selected'}), 400
+        
+        # Read audio data
+        audio_data = audio_file.read()
+        
+        # Test transcription with auto-detect
+        result = transcribe_audio(audio_data, 'auto')
+        
+        return jsonify({
+            'success': True,
+            'transcript': result['text'],
+            'language': result.get('language', 'unknown'),
+            'confidence': result.get('confidence', 0),
+            'error': result.get('error'),
+            'audio_size': len(audio_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Test whisper error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize everything
