@@ -969,18 +969,18 @@ def manifest():
         "name": "Translation PWA",
         "short_name": "TranslatePWA",
         "description": "Real-time translation service",
-        "start_url": "/",
+        "start_url": "./",
         "display": "standalone",
         "background_color": "#1f2937",
         "theme_color": "#3b82f6",
         "icons": [
             {
-                "src": "/static/icon-192.png",
+                "src": "./static/icon-192.png",
                 "sizes": "192x192",
                 "type": "image/png"
             },
             {
-                "src": "/static/icon-512.png", 
+                "src": "./static/icon-512.png", 
                 "sizes": "512x512",
                 "type": "image/png"
             }
@@ -990,7 +990,7 @@ def manifest():
 @app.route('/sw.js')
 def service_worker():
     """Service worker for PWA"""
-    return send_file('/opt/praktik/translation-pwa/static/sw.js')
+    return send_file('/app/static/sw.js')
 
 # Health check
 @app.route('/health')

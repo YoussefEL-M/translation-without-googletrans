@@ -11,12 +11,12 @@
     <meta name="apple-mobile-web-app-title" content="TranslatePWA">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="./manifest.json">
     
     <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
-    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./static/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="./static/icon-192.png">
     
     <!-- Styles -->
     <style>
@@ -499,7 +499,7 @@
     </div>
     
     <!-- Socket.IO -->
-    <script src="/static/socket.io.min.js"></script>
+    <script src="./static/socket.io.min.js"></script>
     
     <script>
         // Global variables
@@ -530,7 +530,7 @@
         
         async function checkAuthStatus() {
             try {
-                const response = await fetch('/api/auth/status');
+                const response = await fetch('./api/auth/status');
                 const data = await response.json();
                 
                 if (data.authenticated) {
@@ -585,7 +585,9 @@
         }
         
         function initializeSocket() {
-            socket = io();
+            socket = io({
+                path: './socket.io/'
+            });
             
             socket.on('connect', function() {
                 console.log('Connected to server');
@@ -617,7 +619,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('/api/auth/login', {
+                const response = await fetch('./api/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -706,7 +708,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('/api/conversations', {
+                const response = await fetch('./api/conversations', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -827,7 +829,7 @@
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'recording.webm');
                 
-                const response = await fetch(`/api/conversations/${currentConversationId}/messages`, {
+                const response = await fetch(`./api/conversations/${currentConversationId}/messages`, {
                     method: 'POST',
                     body: formData
                 });
@@ -929,7 +931,7 @@
             }
             
             try {
-                const response = await fetch('/api/tts', {
+                const response = await fetch('./api/tts', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -960,7 +962,7 @@
         
         async function loadConversations() {
             try {
-                const response = await fetch('/api/conversations');
+                const response = await fetch('./api/conversations');
                 const data = await response.json();
                 
                 const listDiv = document.getElementById('conversationList');
@@ -1088,7 +1090,7 @@
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('./sw.js')
                     .then(function(registration) {
                         console.log('ServiceWorker registration successful');
                     })
