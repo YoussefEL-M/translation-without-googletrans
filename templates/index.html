@@ -384,8 +384,6 @@
         <!-- Admin Link -->
         <a href="/admin" class="admin-link">Admin</a>
         
-        <!-- Test Link -->
-        <a href="/test-whisper" class="admin-link" style="top: 60px;">Test Whisper</a>
         
         <!-- Authentication Section -->
         <div id="authSection" class="auth-section active">
@@ -608,6 +606,10 @@
                 
                 // Set default output language to English
                 outputSelect.value = 'en';
+                
+                // Add event listeners for instant language changes
+                inputSelect.addEventListener('change', handleLanguageChange);
+                outputSelect.addEventListener('change', handleLanguageChange);
                 
             } catch (error) {
                 console.error('Failed to load languages:', error);
@@ -1041,7 +1043,12 @@
                 </div>
                 <div class="message-content">
                     <div class="original-text">${message.original_text}</div>
-                    <div class="translated-text">${message.translated_text}</div>
+                    <div class="translated-text">
+                        ${message.translated_text}
+                        <button class="btn btn-secondary" onclick="playTranslation('${message.translated_text.replace(/'/g, "\\'")}', '${outputLang}')" style="width: auto; margin-left: 10px; padding: 4px 8px; font-size: 12px;">
+                            🔊
+                        </button>
+                    </div>
                 </div>
             `;
             
@@ -1160,16 +1167,30 @@
                         const convDiv = document.createElement('div');
                         convDiv.className = 'card';
                         convDiv.style.marginBottom = '10px';
+                        convDiv.style.cursor = 'pointer';
+                        convDiv.onclick = () => viewConversation(conv.id);
                         
                         const createdDate = new Date(conv.created_at).toLocaleDateString();
                         const messageCount = conv.message_count || 0;
                         
                         convDiv.innerHTML = `
-                            <h3>Conversation ${conv.id.substring(0, 8)}...</h3>
-                            <p><strong>Created:</strong> ${createdDate}</p>
-                            <p><strong>Languages:</strong> ${conv.input_language} → ${conv.output_language}</p>
-                            <p><strong>Messages:</strong> ${messageCount}</p>
-                            <p><strong>Status:</strong> ${conv.ended ? 'Ended' : 'Active'}</p>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3>Conversation ${conv.id.substring(0, 8)}...</h3>
+                                    <p><strong>Created:</strong> ${createdDate}</p>
+                                    <p><strong>Languages:</strong> ${conv.input_language} → ${conv.output_language}</p>
+                                    <p><strong>Messages:</strong> ${messageCount}</p>
+                                    <p><strong>Status:</strong> ${conv.ended ? 'Ended' : 'Active'}</p>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <button class="btn btn-secondary" onclick="event.stopPropagation(); viewConversation('${conv.id}')" style="width: auto; margin: 0;">
+                                        👁️ View
+                                    </button>
+                                    ${conv.ended ? `<button class="btn btn-success" onclick="event.stopPropagation(); continueConversation('${conv.id}')" style="width: auto; margin: 0;">
+                                        🔄 Continue
+                                    </button>` : ''}
+                                </div>
+                            </div>
                         `;
                         
                         listDiv.appendChild(convDiv);
@@ -1181,6 +1202,233 @@
                 console.error('Load conversations error:', error);
                 document.getElementById('conversationList').innerHTML = 
                     '<p style="text-align: center; color: #ef4444; padding: 20px;">Failed to load conversations.</p>';
+            }
+        }
+        
+        async function viewConversation(conversationId) {
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`/api/conversations/${conversationId}`);
+                const data = await response.json();
+                
+                if (data.conversation && data.messages) {
+                    // Show conversation in a modal
+                    showConversationModal(data.conversation, data.messages);
+                } else {
+                    showError('Failed to load conversation details');
+                }
+            } catch (error) {
+                console.error('View conversation error:', error);
+                showError('Failed to load conversation');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function continueConversation(conversationId) {
+            try {
+                showLoading(true);
+                
+                // First, reactivate the conversation
+                const continueResponse = await fetch(`/api/conversations/${conversationId}/continue`, {
+                    method: 'POST'
+                });
+                
+                if (!continueResponse.ok) {
+                    const errorData = await continueResponse.json();
+                    throw new Error(errorData.error || 'Failed to continue conversation');
+                }
+                
+                // Then get the conversation details
+                const response = await fetch(`/api/conversations/${conversationId}`);
+                const data = await response.json();
+                
+                if (data.conversation && data.messages) {
+                    // Set the conversation as active
+                    currentConversationId = conversationId;
+                    
+                    // Update UI
+                    document.getElementById('recordBtn').disabled = false;
+                    document.getElementById('emailBtn').disabled = false;
+                    updateConversationButton();
+                    
+                    // Set language settings
+                    document.getElementById('inputLanguage').value = data.conversation.input_language;
+                    document.getElementById('outputLanguage').value = data.conversation.output_language;
+                    
+                    // Load conversation history
+                    loadConversationHistory(data.messages);
+                    
+                    // Join conversation room
+                    socket.emit('join_conversation', { conversation_id: currentConversationId });
+                    
+                    showSuccess('Conversation continued successfully!');
+                    
+                    // Refresh the conversation list to show updated status
+                    await loadConversations();
+                } else {
+                    showError('Failed to load conversation details');
+                }
+            } catch (error) {
+                console.error('Continue conversation error:', error);
+                showError(`Failed to continue conversation: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function loadConversationHistory(messages) {
+            const history = document.getElementById('conversationHistory');
+            history.innerHTML = '';
+            
+            if (messages.length === 0) {
+                history.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No messages in this conversation yet.</p>';
+                return;
+            }
+            
+            messages.forEach(message => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user';
+                
+                const timestamp = new Date(message.timestamp).toLocaleTimeString();
+                
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span>You (${message.input_language}) → ${message.output_language}</span>
+                        <span>${timestamp}</span>
+                    </div>
+                    <div class="message-content">
+                        <div class="original-text">${message.original_text}</div>
+                        <div class="translated-text">
+                            ${message.translated_text}
+                            <button class="btn btn-secondary" onclick="playTranslation('${message.translated_text}', '${message.output_language}')" style="width: auto; margin-left: 10px; padding: 4px 8px; font-size: 12px;">
+                                🔊
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                history.appendChild(messageDiv);
+            });
+            
+            history.scrollTop = history.scrollHeight;
+        }
+        
+        function showConversationModal(conversation, messages) {
+            // Create modal HTML
+            const modalHtml = `
+                <div id="conversationModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+                    <div style="background: white; padding: 30px; border-radius: 16px; max-width: 800px; width: 90%; max-height: 80%; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow-y: auto;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="color: #1f2937;">Conversation ${conversation.id.substring(0, 8)}...</h2>
+                            <button onclick="hideConversationModal()" style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">×</button>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                            <p><strong>Created:</strong> ${new Date(conversation.created_at).toLocaleString()}</p>
+                            <p><strong>Languages:</strong> ${conversation.input_language} → ${conversation.output_language}</p>
+                            <p><strong>Messages:</strong> ${messages.length}</p>
+                            <p><strong>Status:</strong> ${conversation.ended ? 'Ended' : 'Active'}</p>
+                        </div>
+                        
+                        <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+                            ${messages.map(message => `
+                                <div style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; color: #6b7280;">
+                                        <span>You (${message.input_language}) → ${message.output_language}</span>
+                                        <span>${new Date(message.timestamp).toLocaleTimeString()}</span>
+                                    </div>
+                                    <div style="font-size: 16px; line-height: 1.5;">
+                                        <div style="margin-bottom: 8px; font-weight: 500;">${message.original_text}</div>
+                                        <div style="color: #059669; font-style: italic;">
+                                            ${message.translated_text}
+                                            <button class="btn btn-secondary" onclick="playTranslation('${message.translated_text.replace(/'/g, "\\'")}', '${message.output_language}')" style="width: auto; margin-left: 10px; padding: 4px 8px; font-size: 12px;">
+                                                🔊
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                            <button onclick="hideConversationModal()" style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                                Close
+                            </button>
+                            ${conversation.ended ? `<button onclick="continueConversation('${conversation.id}'); hideConversationModal();" style="padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                                🔄 Continue Conversation
+                            </button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add modal to page
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+        
+        function hideConversationModal() {
+            const modal = document.getElementById('conversationModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        async function playTranslation(text, language) {
+            if (!text || !text.trim()) {
+                showError('No text to play');
+                return;
+            }
+            
+            try {
+                console.log('Requesting TTS for:', text.substring(0, 50) + '...');
+                
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text.trim(),
+                        language: language
+                    })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    
+                    if (audioBlob.size > 0) {
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audio = new Audio(audioUrl);
+                        
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                        
+                        audio.onerror = () => {
+                            showError('Failed to play audio');
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                        
+                        await audio.play();
+                    } else {
+                        showError('No audio data received');
+                    }
+                } else {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    showError(`TTS failed: ${errorData.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('TTS error:', error);
+                showError(`Failed to play translation: ${error.message}`);
+            }
+        }
+        
+        function handleLanguageChange() {
+            // If there's an active conversation, update the conversation languages instantly
+            if (currentConversationId) {
+                updateConversationLanguagesFromSettings();
             }
         }
         

@@ -18,6 +18,7 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - FROM_EMAIL=${FROM_EMAIL:-noreply@ballerup.dk}
+      - CUDA_VISIBLE_DEVICES=0
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -28,6 +29,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G
         reservations:
-          memory: 2G
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
