@@ -472,9 +472,6 @@
                     <button class="btn btn-warning" onclick="sendConversationEmail()" id="emailBtn" disabled>
                         📧 Send to Email
                     </button>
-                    <button class="btn btn-secondary" onclick="playLastTranslation()" id="playBtn" disabled>
-                        🔊 Play Last Translation
-                    </button>
                 </div>
             </div>
             
@@ -826,7 +823,6 @@
                     currentConversationId = null;
                     document.getElementById('recordBtn').disabled = true;
                     document.getElementById('emailBtn').disabled = true;
-                    document.getElementById('playBtn').disabled = true;
                     updateConversationButton();
                     
                     
@@ -997,8 +993,7 @@
                     // Add message to conversation display
                     addMessageToDisplay(message);
                     
-                    // Enable play button
-                    document.getElementById('playBtn').disabled = false;
+                    // Play button removed - individual speakers are used instead
                     
                     // Broadcast to other participants
                     socket.emit('new_message', {
@@ -1184,7 +1179,7 @@
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 8px;">
                                     <button class="btn btn-secondary" onclick="event.stopPropagation(); viewConversation('${conv.id}')" style="width: auto; margin: 0;">
-                                        👁️ View
+                                        📋 View
                                     </button>
                                     ${conv.ended ? `<button class="btn btn-success" onclick="event.stopPropagation(); continueConversation('${conv.id}')" style="width: auto; margin: 0;">
                                         🔄 Continue
@@ -1356,6 +1351,9 @@
                             <button onclick="hideConversationModal()" style="padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
                                 Close
                             </button>
+                            <button onclick="downloadConversationHistory('${conversation.id}')" style="padding: 12px 24px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                                📥 Download TXT
+                            </button>
                             ${conversation.ended ? `<button onclick="continueConversation('${conversation.id}'); hideConversationModal();" style="padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
                                 🔄 Continue Conversation
                             </button>` : ''}
@@ -1372,6 +1370,56 @@
             const modal = document.getElementById('conversationModal');
             if (modal) {
                 modal.remove();
+            }
+        }
+        
+        async function downloadConversationHistory(conversationId) {
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`/api/conversations/${conversationId}`);
+                const data = await response.json();
+                
+                if (data.conversation && data.messages) {
+                    // Create TXT content
+                    let txtContent = `Translation Conversation History\n`;
+                    txtContent += `================================\n\n`;
+                    txtContent += `Conversation ID: ${data.conversation.id}\n`;
+                    txtContent += `Created: ${new Date(data.conversation.created_at).toLocaleString()}\n`;
+                    txtContent += `Languages: ${data.conversation.input_language} → ${data.conversation.output_language}\n`;
+                    txtContent += `Status: ${data.conversation.ended ? 'Ended' : 'Active'}\n`;
+                    txtContent += `Messages: ${data.messages.length}\n\n`;
+                    txtContent += `Messages:\n`;
+                    txtContent += `--------\n\n`;
+                    
+                    data.messages.forEach((message, index) => {
+                        const timestamp = new Date(message.timestamp).toLocaleString();
+                        txtContent += `Message ${index + 1} (${timestamp})\n`;
+                        txtContent += `Languages: ${message.input_language} → ${message.output_language}\n`;
+                        txtContent += `Original: ${message.original_text}\n`;
+                        txtContent += `Translation: ${message.translated_text}\n\n`;
+                    });
+                    
+                    // Create and download file
+                    const blob = new Blob([txtContent], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `conversation_${conversationId.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showSuccess('Conversation history downloaded successfully!');
+                } else {
+                    showError('Failed to load conversation data for download');
+                }
+            } catch (error) {
+                console.error('Download error:', error);
+                showError('Failed to download conversation history');
+            } finally {
+                showLoading(false);
             }
         }
         
