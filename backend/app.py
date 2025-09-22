@@ -234,44 +234,58 @@ def init_tts():
     global tts_engine
     if tts_engine is None:
         try:
-            # Try Coqui TTS with Fast Pitch model (no licensing required)
-            logger.info("Initializing Coqui TTS with Fast Pitch model...")
-            tts_engine = TTS("tts_models/en/ljspeech/fast_pitch")
-            logger.info("TTS engine initialized with Coqui TTS (Fast Pitch)")
+            # Try Coqui XTTS v2 (multilingual model - best option)
+            logger.info("Initializing Coqui XTTS v2 multilingual model...")
+            tts_engine = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+            logger.info("TTS engine initialized with Coqui XTTS v2 (multilingual)")
         except Exception as e:
-            logger.error(f"Failed to initialize Coqui TTS Fast Pitch model: {e}")
+            logger.error(f"Failed to initialize Coqui XTTS v2: {e}")
             try:
-                # Fallback to VITS model
-                logger.info("Falling back to VITS model...")
-                tts_engine = TTS("tts_models/en/vctk/vits")
-                logger.info("TTS engine initialized with Coqui TTS (VITS)")
+                # Fallback to XTTS v1.1 (also multilingual)
+                logger.info("Falling back to XTTS v1.1 multilingual model...")
+                tts_engine = TTS("tts_models/multilingual/multi-dataset/xtts_v1.1")
+                logger.info("TTS engine initialized with Coqui XTTS v1.1 (multilingual)")
             except Exception as e2:
-                logger.error(f"Failed to initialize Coqui TTS: {e2}")
-                # Fallback to Festival
+                logger.error(f"Failed to initialize XTTS v1.1: {e2}")
                 try:
-                    result = subprocess.run(['festival', '--version'], 
-                                          capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0:
-                        tts_engine = 'festival'
-                        logger.info("TTS engine fallback to Festival")
-                    else:
-                        logger.error("Festival not available")
-                        tts_engine = None
+                    # Fallback to English-only Fast Pitch model
+                    logger.info("Falling back to English-only Fast Pitch model...")
+                    tts_engine = TTS("tts_models/en/ljspeech/fast_pitch")
+                    logger.info("TTS engine initialized with Coqui TTS (Fast Pitch - English only)")
                 except Exception as e3:
-                    logger.error(f"Failed to initialize Festival: {e3}")
-                    # Final fallback to espeak
+                    logger.error(f"Failed to initialize Coqui TTS Fast Pitch: {e3}")
                     try:
-                        result = subprocess.run(['espeak', '--version'], 
-                                              capture_output=True, text=True, timeout=5)
-                        if result.returncode == 0:
-                            tts_engine = 'espeak'
-                            logger.info("TTS engine final fallback to espeak")
-                        else:
-                            logger.error("espeak not available")
-                            tts_engine = None
+                        # Fallback to VITS model
+                        logger.info("Falling back to VITS model...")
+                        tts_engine = TTS("tts_models/en/vctk/vits")
+                        logger.info("TTS engine initialized with Coqui TTS (VITS)")
                     except Exception as e4:
-                        logger.error(f"Failed to initialize espeak: {e4}")
-                        tts_engine = None
+                        logger.error(f"Failed to initialize Coqui TTS: {e4}")
+                        # Fallback to Festival
+                        try:
+                            result = subprocess.run(['festival', '--version'], 
+                                                  capture_output=True, text=True, timeout=5)
+                            if result.returncode == 0:
+                                tts_engine = 'festival'
+                                logger.info("TTS engine fallback to Festival")
+                            else:
+                                logger.error("Festival not available")
+                                tts_engine = None
+                        except Exception as e5:
+                            logger.error(f"Failed to initialize Festival: {e5}")
+                            # Final fallback to espeak
+                            try:
+                                result = subprocess.run(['espeak', '--version'], 
+                                                      capture_output=True, text=True, timeout=5)
+                                if result.returncode == 0:
+                                    tts_engine = 'espeak'
+                                    logger.info("TTS engine final fallback to espeak")
+                                else:
+                                    logger.error("espeak not available")
+                                    tts_engine = None
+                            except Exception as e6:
+                                logger.error(f"Failed to initialize espeak: {e6}")
+                                tts_engine = None
 
 def init_speech_recognition():
     """Initialize speech recognition"""
@@ -369,6 +383,37 @@ def translate_text(text: str, from_lang: str, to_lang: str) -> str:
         logger.error(f"Translation error: {e}")
         return text
 
+def get_xtts_language_code(language: str) -> str:
+    """Map language codes to XTTS supported language codes"""
+    xtts_language_map = {
+        'en': 'en',      # English
+        'es': 'es',      # Spanish
+        'fr': 'fr',      # French
+        'de': 'de',      # German
+        'it': 'it',      # Italian
+        'pt': 'pt',      # Portuguese
+        'pl': 'pl',      # Polish
+        'tr': 'tr',      # Turkish
+        'ru': 'ru',      # Russian
+        'nl': 'nl',      # Dutch
+        'cs': 'cs',      # Czech
+        'ar': 'ar',      # Arabic
+        'zh': 'zh',      # Chinese
+        'ja': 'ja',      # Japanese
+        'ko': 'ko',      # Korean
+        'hi': 'hi',      # Hindi
+        'da': 'da',      # Danish
+        'sv': 'sv',      # Swedish
+        'no': 'no',      # Norwegian
+        'fi': 'fi',      # Finnish
+        'uk': 'uk',      # Ukrainian
+        'sr': 'sr',      # Serbian
+        'ur': 'ur',      # Urdu
+        'tl': 'en',      # Filipino (Tagalog) - fallback to English
+        'auto': 'en'     # Auto-detect fallback to English
+    }
+    return xtts_language_map.get(language, 'en')
+
 def text_to_speech(text: str, language: str) -> bytes:
     """Convert text to speech using Coqui TTS, Festival, or espeak fallback"""
     try:
@@ -388,9 +433,12 @@ def text_to_speech(text: str, language: str) -> bytes:
                     # Check if we have the multilingual XTTS model
                     if hasattr(tts_engine, 'model_name') and 'xtts' in tts_engine.model_name.lower():
                         # Use multilingual XTTS model with language parameter
-                        tts_engine.tts_to_file(text=text, file_path=tmp_file.name, language=language)
+                        xtts_lang = get_xtts_language_code(language)
+                        logger.info(f"Using XTTS multilingual model for language: {language} -> {xtts_lang}")
+                        tts_engine.tts_to_file(text=text, file_path=tmp_file.name, language=xtts_lang)
                     else:
                         # Use regular Coqui TTS (English-only fallback)
+                        logger.info("Using English-only Coqui TTS model")
                         tts_engine.tts_to_file(text=text, file_path=tmp_file.name)
                     
                 elif tts_engine == 'festival':
@@ -546,7 +594,7 @@ def get_db_connection():
         conn.close()
 
 # Authentication routes
-@app.route('/api/auth/login', methods=['POST'])
+@app.route('/translation-pwa/api/auth/login', methods=['POST'])
 def login():
     """User login endpoint"""
     try:
@@ -588,7 +636,7 @@ def login():
         logger.error(f"Login error: {e}")
         return jsonify({'error': 'Login failed'}), 500
 
-@app.route('/api/auth/register', methods=['POST'])
+@app.route('/translation-pwa/api/auth/register', methods=['POST'])
 def register():
     """User registration endpoint"""
     try:
@@ -628,13 +676,13 @@ def register():
         logger.error(f"Registration error: {e}")
         return jsonify({'error': 'Registration failed'}), 500
 
-@app.route('/api/auth/logout', methods=['POST'])
+@app.route('/translation-pwa/api/auth/logout', methods=['POST'])
 def logout():
     """User logout endpoint"""
     session.clear()
     return jsonify({'success': True})
 
-@app.route('/api/auth/make-admin', methods=['POST'])
+@app.route('/translation-pwa/api/auth/make-admin', methods=['POST'])
 def make_admin():
     """Make a user admin (for initial setup)"""
     try:
@@ -661,7 +709,7 @@ def make_admin():
         logger.error(f"Make admin error: {e}")
         return jsonify({'error': 'Failed to make user admin'}), 500
 
-@app.route('/api/auth/status', methods=['GET'])
+@app.route('/translation-pwa/api/auth/status', methods=['GET'])
 def auth_status():
     """Check authentication status"""
     if 'user_email' in session:
@@ -675,7 +723,7 @@ def auth_status():
     return jsonify({'authenticated': False})
 
 # Language management routes
-@app.route('/api/languages', methods=['GET'])
+@app.route('/translation-pwa/api/languages', methods=['GET'])
 def get_languages():
     """Get available languages"""
     try:
@@ -692,7 +740,7 @@ def get_languages():
         return jsonify({'error': 'Failed to get languages'}), 500
 
 # Conversation management routes
-@app.route('/api/conversations', methods=['POST'])
+@app.route('/translation-pwa/api/conversations', methods=['POST'])
 def create_conversation():
     """Create a new conversation"""
     try:
@@ -728,7 +776,7 @@ def create_conversation():
         logger.error(f"Error creating conversation: {e}")
         return jsonify({'error': 'Failed to create conversation'}), 500
 
-@app.route('/api/conversations/<conversation_id>/messages', methods=['POST'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>/messages', methods=['POST'])
 def add_message(conversation_id):
     """Add a message to a conversation"""
     try:
@@ -822,7 +870,7 @@ def add_message(conversation_id):
         logger.error(f"Error adding message: {e}")
         return jsonify({'error': 'Failed to add message'}), 500
 
-@app.route('/api/conversations/<conversation_id>', methods=['GET'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>', methods=['GET'])
 def get_conversation(conversation_id):
     """Get conversation details and messages"""
     try:
@@ -859,7 +907,7 @@ def get_conversation(conversation_id):
         logger.error(f"Error getting conversation: {e}")
         return jsonify({'error': 'Failed to get conversation'}), 500
 
-@app.route('/api/conversations', methods=['GET'])
+@app.route('/translation-pwa/api/conversations', methods=['GET'])
 def get_user_conversations():
     """Get all conversations for the current user"""
     try:
@@ -886,7 +934,7 @@ def get_user_conversations():
         logger.error(f"Error getting conversations: {e}")
         return jsonify({'error': 'Failed to get conversations'}), 500
 
-@app.route('/api/conversations/<conversation_id>/end', methods=['POST'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>/end', methods=['POST'])
 def end_conversation(conversation_id):
     """End a conversation"""
     try:
@@ -912,7 +960,7 @@ def end_conversation(conversation_id):
         logger.error(f"Error ending conversation: {e}")
         return jsonify({'error': 'Failed to end conversation'}), 500
 
-@app.route('/api/conversations/<conversation_id>/continue', methods=['POST'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>/continue', methods=['POST'])
 def continue_conversation(conversation_id):
     """Continue a previously ended conversation"""
     try:
@@ -947,7 +995,7 @@ def continue_conversation(conversation_id):
         logger.error(f"Error continuing conversation: {e}")
         return jsonify({'error': 'Failed to continue conversation'}), 500
 
-@app.route('/api/conversations/<conversation_id>/languages', methods=['PUT'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>/languages', methods=['PUT'])
 def update_conversation_languages(conversation_id):
     """Update conversation language settings"""
     try:
@@ -996,7 +1044,7 @@ def update_conversation_languages(conversation_id):
         logger.error(f"Error updating conversation languages: {e}")
         return jsonify({'error': 'Failed to update language settings'}), 500
 
-@app.route('/api/conversations/<conversation_id>/email', methods=['POST'])
+@app.route('/translation-pwa/api/conversations/<conversation_id>/email', methods=['POST'])
 def send_conversation_email(conversation_id):
     """Send conversation via email"""
     try:
@@ -1042,7 +1090,7 @@ def send_conversation_email(conversation_id):
         return jsonify({'error': 'Failed to send email'}), 500
 
 # Text-to-speech route
-@app.route('/api/tts', methods=['POST'])
+@app.route('/translation-pwa/api/tts', methods=['POST'])
 def text_to_speech_endpoint():
     """Convert text to speech"""
     try:
@@ -1079,7 +1127,7 @@ def text_to_speech_endpoint():
         return jsonify({'error': f'TTS failed: {str(e)}'}), 500
 
 # Admin routes
-@app.route('/api/admin/languages', methods=['GET'])
+@app.route('/translation-pwa/api/admin/languages', methods=['GET'])
 def admin_get_languages():
     """Admin: Get all languages"""
     try:
@@ -1099,7 +1147,7 @@ def admin_get_languages():
         logger.error(f"Admin language error: {e}")
         return jsonify({'error': 'Failed to get languages'}), 500
 
-@app.route('/api/admin/languages/<language_code>/toggle', methods=['POST'])
+@app.route('/translation-pwa/api/admin/languages/<language_code>/toggle', methods=['POST'])
 def admin_toggle_language(language_code):
     """Admin: Toggle language availability"""
     try:
@@ -1125,7 +1173,7 @@ def admin_toggle_language(language_code):
         logger.error(f"Admin toggle language error: {e}")
         return jsonify({'error': 'Failed to toggle language'}), 500
 
-@app.route('/api/admin/conversations', methods=['GET'])
+@app.route('/translation-pwa/api/admin/conversations', methods=['GET'])
 def admin_get_all_conversations():
     """Admin: Get all conversations"""
     try:
@@ -1152,7 +1200,7 @@ def admin_get_all_conversations():
         logger.error(f"Admin conversations error: {e}")
         return jsonify({'error': 'Failed to get conversations'}), 500
 
-@app.route('/api/admin/export', methods=['GET'])
+@app.route('/translation-pwa/api/admin/export', methods=['GET'])
 def admin_export_conversations():
     """Admin: Export all conversations"""
     try:
@@ -1212,12 +1260,12 @@ def on_new_message(data):
         emit('message_update', data, room=conversation_id)
 
 # Main application routes
-@app.route('/')
+@app.route('/translation-pwa')
 def index():
     """Serve the main PWA"""
     return render_template('index.html')
 
-@app.route('/admin')
+@app.route('/translation-pwa/admin')
 def admin():
     """Serve the admin interface"""
     if not session.get('is_admin'):
@@ -1225,38 +1273,44 @@ def admin():
     return render_template('admin.html')
 
 
-@app.route('/manifest.json')
+@app.route('/translation-pwa/manifest.json')
 def manifest():
     """PWA manifest"""
     return jsonify({
         "name": "Translation PWA",
         "short_name": "TranslatePWA",
         "description": "Real-time translation service",
-        "start_url": "/",
+        "start_url": "/translation-pwa",
         "display": "standalone",
         "background_color": "#1f2937",
         "theme_color": "#3b82f6",
         "icons": [
             {
-                "src": "/static/icon-192.png",
+                "src": "/translation-pwa/static/icon-192.png",
                 "sizes": "192x192",
                 "type": "image/png"
             },
             {
-                "src": "/static/icon-512.png", 
+                "src": "/translation-pwa/static/icon-512.png", 
                 "sizes": "512x512",
                 "type": "image/png"
             }
         ]
     })
 
-@app.route('/sw.js')
+@app.route('/translation-pwa/sw.js')
 def service_worker():
     """Service worker for PWA"""
-    return send_file('/app/static/sw.js')
+    return send_file('/opt/praktik/translation-pwa/static/sw.js')
+
+# Static files route
+@app.route('/translation-pwa/static/<path:filename>')
+def static_files(filename):
+    """Serve static files"""
+    return send_file(os.path.join('/app/static', filename))
 
 # Health check
-@app.route('/health')
+@app.route('/translation-pwa/health')
 def health():
     """Health check endpoint"""
     return jsonify({
@@ -1278,4 +1332,4 @@ if __name__ == '__main__':
     
     # Start the application
     logger.info("Starting Translation PWA Backend...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='0.0.0.0', port=8000, debug=False, allow_unsafe_werkzeug=True)

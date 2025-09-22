@@ -11,12 +11,12 @@
     <meta name="apple-mobile-web-app-title" content="TranslatePWA">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/translation-pwa/manifest.json">
     
     <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
-    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/translation-pwa/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/translation-pwa/static/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/translation-pwa/static/icon-192.png">
     
     <!-- Styles -->
     <style>
@@ -168,9 +168,6 @@
         }
         
         .conversation-controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
             margin-bottom: 20px;
         }
         
@@ -469,7 +466,7 @@
                 </div>
                 
                 <div class="conversation-controls">
-                    <button class="btn btn-warning" onclick="sendConversationEmail()" id="emailBtn" disabled>
+                    <button class="btn btn-warning" onclick="sendConversationEmail()" id="emailBtn" disabled style="width: 100%; margin-bottom: 0;">
                         📧 Send to Email
                     </button>
                 </div>
@@ -525,7 +522,7 @@
     </div>
     
     <!-- Socket.IO -->
-    <script src="/static/socket.io.min.js"></script>
+    <script src="/translation-pwa/static/socket.io.min.js"></script>
     
     <script>
         // Global variables
@@ -556,7 +553,7 @@
         
         async function checkAuthStatus() {
             try {
-                const response = await fetch('/api/auth/status');
+                const response = await fetch('/translation-pwa/api/auth/status');
                 const data = await response.json();
                 
                 if (data.authenticated) {
@@ -574,7 +571,7 @@
         
         async function loadLanguages() {
             try {
-                const response = await fetch('/api/languages');
+                const response = await fetch('/translation-pwa/api/languages');
                 const data = await response.json();
                 
                 availableLanguages = data.languages;
@@ -649,7 +646,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('/api/auth/login', {
+                const response = await fetch('/translation-pwa/api/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -699,7 +696,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('/api/auth/register', {
+                const response = await fetch('/translation-pwa/api/auth/register', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -761,7 +758,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch('/api/conversations', {
+                const response = await fetch('/translation-pwa/api/conversations', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -810,7 +807,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch(`/api/conversations/${currentConversationId}/end`, {
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/end`, {
                     method: 'POST'
                 });
                 
@@ -899,7 +896,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch(`/api/conversations/${currentConversationId}/languages`, {
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/languages`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
@@ -979,7 +976,7 @@
                 const formData = new FormData();
                 formData.append('audio', audioBlob, 'recording.webm');
                 
-                const response = await fetch(`/api/conversations/${currentConversationId}/messages`, {
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/messages`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1063,7 +1060,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch(`/api/conversations/${currentConversationId}/email`, {
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/email`, {
                     method: 'POST'
                 });
                 
@@ -1096,7 +1093,7 @@
             try {
                 console.log('Requesting TTS for:', lastTranslatedText.substring(0, 50) + '...');
                 
-                const response = await fetch('/api/tts', {
+                const response = await fetch('/translation-pwa/api/tts', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1150,7 +1147,7 @@
         
         async function loadConversations() {
             try {
-                const response = await fetch('/api/conversations');
+                const response = await fetch('/translation-pwa/api/conversations');
                 const data = await response.json();
                 
                 const listDiv = document.getElementById('conversationList');
@@ -1204,7 +1201,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch(`/api/conversations/${conversationId}`);
+                const response = await fetch(`/translation-pwa/api/conversations/${conversationId}`);
                 const data = await response.json();
                 
                 if (data.conversation && data.messages) {
@@ -1226,7 +1223,7 @@
                 showLoading(true);
                 
                 // First, reactivate the conversation
-                const continueResponse = await fetch(`/api/conversations/${conversationId}/continue`, {
+                const continueResponse = await fetch(`/translation-pwa/api/conversations/${conversationId}/continue`, {
                     method: 'POST'
                 });
                 
@@ -1236,7 +1233,7 @@
                 }
                 
                 // Then get the conversation details
-                const response = await fetch(`/api/conversations/${conversationId}`);
+                const response = await fetch(`/translation-pwa/api/conversations/${conversationId}`);
                 const data = await response.json();
                 
                 if (data.conversation && data.messages) {
@@ -1377,7 +1374,7 @@
             try {
                 showLoading(true);
                 
-                const response = await fetch(`/api/conversations/${conversationId}`);
+                const response = await fetch(`/translation-pwa/api/conversations/${conversationId}`);
                 const data = await response.json();
                 
                 if (data.conversation && data.messages) {
@@ -1432,7 +1429,7 @@
             try {
                 console.log('Requesting TTS for:', text.substring(0, 50) + '...');
                 
-                const response = await fetch('/api/tts', {
+                const response = await fetch('/translation-pwa/api/tts', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1508,7 +1505,7 @@
             }
             
             try {
-                const response = await fetch(`/api/conversations/${currentConversationId}/languages`, {
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/languages`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
