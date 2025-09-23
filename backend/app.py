@@ -88,7 +88,7 @@ class Config:
         'pl': 'polish',
         'uk': 'ukrainian',
         'hi': 'hindi',
-        'tl': 'filipino'
+        'tl': 'tagalog'
     }
 
 # Initialize Flask app
