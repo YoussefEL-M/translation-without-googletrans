@@ -200,7 +200,7 @@ def init_database():
         logger.info("Database initialized successfully")
 
 def load_whisper_model():
-    """Load Whisper model on demand - using large model for better multilingual support"""
+    """Load Whisper model on demand - using smaller model for faster loading"""
     global whisper_model
     if whisper_model is None:
         logger.info("Loading Whisper model...")
@@ -209,83 +209,61 @@ def load_whisper_model():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {device}")
             
-            # Use large model for better multilingual support
-            whisper_model = whisper.load_model("large", device=device)
-            logger.info(f"Whisper large model loaded successfully on {device}")
-        except torch.cuda.OutOfMemoryError:
-            logger.warning("Large model too large, falling back to medium model")
-            whisper_model = whisper.load_model("medium", device=device)
-            logger.info(f"Whisper medium model loaded successfully on {device}")
-        except Exception as e:
-            logger.error(f"Failed to load Whisper large model: {e}")
+            # Start with small model for faster loading, then upgrade if needed
+            # This prevents long download times during requests
             try:
-                # Fallback to medium model
-                whisper_model = whisper.load_model("medium", device=device)
-                logger.info(f"Whisper medium model loaded successfully on {device}")
-            except Exception as e2:
-                logger.error(f"Failed to load Whisper medium model: {e2}")
-                # Last resort: small model (removed base model fallback)
                 whisper_model = whisper.load_model("small", device=device)
                 logger.info(f"Whisper small model loaded successfully on {device}")
+            except Exception as e:
+                logger.error(f"Failed to load Whisper small model: {e}")
+                # Fallback to base model if small fails
+                whisper_model = whisper.load_model("base", device=device)
+                logger.info(f"Whisper base model loaded successfully on {device}")
+                
+        except Exception as e:
+            logger.error(f"Failed to load Whisper model: {e}")
+            # Last resort: try tiny model
+            try:
+                whisper_model = whisper.load_model("tiny", device=device)
+                logger.info(f"Whisper tiny model loaded successfully on {device}")
+            except Exception as e2:
+                logger.error(f"Failed to load any Whisper model: {e2}")
+                raise e2
     return whisper_model
 
 def init_tts():
     """Initialize text-to-speech engine with multilingual support"""
     global tts_engine
     if tts_engine is None:
+        # Skip Coqui TTS models that require license confirmation
+        # Go directly to fallback options that don't require interactive input
         try:
-            # Try Coqui XTTS v2 (multilingual model - best option)
-            logger.info("Initializing Coqui XTTS v2 multilingual model...")
-            tts_engine = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
-            logger.info("TTS engine initialized with Coqui XTTS v2 (multilingual)")
-        except Exception as e:
-            logger.error(f"Failed to initialize Coqui XTTS v2: {e}")
-            try:
-                # Fallback to XTTS v1.1 (also multilingual)
-                logger.info("Falling back to XTTS v1.1 multilingual model...")
-                tts_engine = TTS("tts_models/multilingual/multi-dataset/xtts_v1.1")
-                logger.info("TTS engine initialized with Coqui XTTS v1.1 (multilingual)")
-            except Exception as e2:
-                logger.error(f"Failed to initialize XTTS v1.1: {e2}")
-                try:
-                    # Fallback to English-only Fast Pitch model
-                    logger.info("Falling back to English-only Fast Pitch model...")
-                    tts_engine = TTS("tts_models/en/ljspeech/fast_pitch")
-                    logger.info("TTS engine initialized with Coqui TTS (Fast Pitch - English only)")
-                except Exception as e3:
-                    logger.error(f"Failed to initialize Coqui TTS Fast Pitch: {e3}")
-                    try:
-                        # Fallback to VITS model
-                        logger.info("Falling back to VITS model...")
-                        tts_engine = TTS("tts_models/en/vctk/vits")
-                        logger.info("TTS engine initialized with Coqui TTS (VITS)")
-                    except Exception as e4:
-                        logger.error(f"Failed to initialize Coqui TTS: {e4}")
-                        # Fallback to Festival
-                        try:
-                            result = subprocess.run(['festival', '--version'], 
-                                                  capture_output=True, text=True, timeout=5)
-                            if result.returncode == 0:
-                                tts_engine = 'festival'
-                                logger.info("TTS engine fallback to Festival")
-                            else:
-                                logger.error("Festival not available")
-                                tts_engine = None
-                        except Exception as e5:
-                            logger.error(f"Failed to initialize Festival: {e5}")
-                            # Final fallback to espeak
-                            try:
-                                result = subprocess.run(['espeak', '--version'], 
-                                                      capture_output=True, text=True, timeout=5)
-                                if result.returncode == 0:
-                                    tts_engine = 'espeak'
-                                    logger.info("TTS engine final fallback to espeak")
-                                else:
-                                    logger.error("espeak not available")
-                                    tts_engine = None
-                            except Exception as e6:
-                                logger.error(f"Failed to initialize espeak: {e6}")
-                                tts_engine = None
+            # Try Festival first (no license required)
+            logger.info("Trying Festival TTS...")
+            result = subprocess.run(['festival', '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                tts_engine = 'festival'
+                logger.info("TTS engine initialized with Festival")
+                return
+        except Exception as e1:
+            logger.error(f"Festival not available: {e1}")
+        
+        try:
+            # Try espeak (no license required)
+            logger.info("Trying espeak TTS...")
+            result = subprocess.run(['espeak', '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                tts_engine = 'espeak'
+                logger.info("TTS engine initialized with espeak")
+                return
+        except Exception as e2:
+            logger.error(f"espeak not available: {e2}")
+        
+        # If no fallback TTS is available, set to None
+        logger.warning("No TTS engine available - text-to-speech will be disabled")
+        tts_engine = None
 
 def init_speech_recognition():
     """Initialize speech recognition"""
@@ -293,6 +271,19 @@ def init_speech_recognition():
     if recognizer is None:
         recognizer = sr.Recognizer()
         logger.info("Speech recognition initialized")
+
+def init_whisper_model():
+    """Pre-load Whisper model during startup to avoid delays during requests"""
+    global whisper_model
+    if whisper_model is None:
+        logger.info("Pre-loading Whisper model during startup...")
+        try:
+            load_whisper_model()
+            logger.info("Whisper model pre-loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to pre-load Whisper model: {e}")
+            # Don't fail startup, just log the error
+            logger.warning("Whisper model will be loaded on first request")
 
 def ensure_translation_model(from_code: str, to_code: str):
     """Ensure translation is available (googletrans is always available)"""
@@ -309,7 +300,19 @@ def ensure_translation_model(from_code: str, to_code: str):
 def transcribe_audio(audio_data: bytes, language: str = None) -> Dict:
     """Transcribe audio using Whisper - simplified approach like working whisper app"""
     try:
-        model = load_whisper_model()
+        # Check if model is loaded first
+        if whisper_model is None:
+            logger.info("Whisper model not loaded yet, loading model...")
+            try:
+                model = load_whisper_model()
+                if whisper_model is None:
+                    logger.error("Failed to load Whisper model")
+                    return {'text': '', 'language': language, 'error': 'Whisper model failed to load. Please try again in a moment.'}
+            except Exception as e:
+                logger.error(f"Error loading Whisper model: {e}")
+                return {'text': '', 'language': language, 'error': f'Whisper model loading failed: {str(e)}. Please try again in a moment.'}
+        else:
+            model = whisper_model
         
         logger.info(f"Audio data length: {len(audio_data)} bytes")
         
@@ -818,6 +821,12 @@ def add_message(conversation_id):
                 audio_data = f.read()
             
             transcription_result = transcribe_audio(audio_data, conversation['input_language'])
+            
+            # Check if transcription failed due to model not being ready
+            if 'error' in transcription_result:
+                logger.error(f"Transcription failed: {transcription_result['error']}")
+                return jsonify({'error': f"Audio processing failed: {transcription_result['error']}"}), 503
+            
             original_text = transcription_result['text']
             detected_language = transcription_result.get('language', conversation['input_language'])
         
@@ -1277,12 +1286,12 @@ def admin():
 def manifest():
     """PWA manifest"""
     return jsonify({
-        "name": "Translation PWA",
-        "short_name": "TranslatePWA",
+        "name": "Translation by Semaphor",
+        "short_name": "Semaphor Translate",
         "description": "Real-time translation service",
         "start_url": "/translation-pwa",
         "display": "standalone",
-        "background_color": "#1f2937",
+        "background_color": "#f8fafc",
         "theme_color": "#3b82f6",
         "icons": [
             {
@@ -1301,13 +1310,17 @@ def manifest():
 @app.route('/translation-pwa/sw.js')
 def service_worker():
     """Service worker for PWA"""
-    return send_file('/opt/praktik/translation-pwa/static/sw.js')
+    return send_file('/app/static/sw.js')
 
 # Static files route
 @app.route('/translation-pwa/static/<path:filename>')
 def static_files(filename):
     """Serve static files"""
-    return send_file(os.path.join('/app/static', filename))
+    file_path = os.path.join('/app/static', filename)
+    if not os.path.exists(file_path):
+        logger.warning(f"Static file not found: {filename}")
+        return "File not found", 404
+    return send_file(file_path)
 
 # Health check
 @app.route('/translation-pwa/health')
@@ -1326,6 +1339,11 @@ if __name__ == '__main__':
     init_database()
     init_tts()
     init_speech_recognition()
+    
+    # Pre-load Whisper model in background to avoid delays during requests
+    import threading
+    whisper_thread = threading.Thread(target=init_whisper_model, daemon=True)
+    whisper_thread.start()
     
     # Ensure upload directory exists
     os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)

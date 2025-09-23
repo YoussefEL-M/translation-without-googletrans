@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Translation PWA</title>
+    <title>Translation by Semaphor</title>
     <meta name="description" content="Real-time translation service for Ballerup">
     <meta name="theme-color" content="#3b82f6">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="TranslatePWA">
+    <meta name="apple-mobile-web-app-title" content="Translation by Semaphor">
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="/translation-pwa/manifest.json">
@@ -28,7 +28,7 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f8fafc;
             min-height: 100vh;
             color: #333;
         }
@@ -42,13 +42,12 @@
         .header {
             text-align: center;
             margin-bottom: 30px;
-            color: white;
+            color: #1f2937;
         }
         
         .header h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         
         .header p {
@@ -374,8 +373,8 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>🌍 Translation PWA</h1>
-            <p>Real-time translation service for Ballerup</p>
+            <h1>Translation by Semaphor</h1>
+            <p>Real-time translation service</p>
         </div>
         
         <!-- Admin Link -->
@@ -491,7 +490,7 @@
         <!-- Language Switch Modal -->
         <div id="languageModal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
             <div style="background: white; padding: 30px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
-                <h2 style="margin-bottom: 20px; color: #1f2937; text-align: center;">🌍 Switch Languages</h2>
+                <h2 style="margin-bottom: 20px; color: #1f2937; text-align: center;">Switch Languages</h2>
                 <p style="color: #6b7280; margin-bottom: 20px; text-align: center;">Change the input and output languages for your current conversation</p>
                 
                 <div style="display: flex; justify-content: center; gap: 20px; align-items: center; margin-bottom: 30px; flex-wrap: wrap;">
@@ -910,7 +909,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showSuccess(`🌍 Languages updated! Now translating from ${inputLang} to ${outputLang}`);
+                    showSuccess(`Languages updated! Now translating from ${inputLang} to ${outputLang}`);
                     
                     // Update main language settings to match
                     document.getElementById('inputLanguage').value = inputLang;
@@ -980,6 +979,14 @@
                     method: 'POST',
                     body: formData
                 });
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const errorText = await response.text();
+                    console.error('Non-JSON response:', errorText);
+                    throw new Error(`Server returned non-JSON response: ${response.status}`);
+                }
                 
                 const data = await response.json();
                 
@@ -1610,7 +1617,7 @@
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/translation-pwa/sw.js')
                     .then(function(registration) {
                         console.log('ServiceWorker registration successful');
                     })
