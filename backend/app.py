@@ -71,7 +71,8 @@ class Config:
         'pl': 'Polish',
         'uk': 'Ukrainian',
         'hi': 'Hindi/Indian',
-        'tl': 'Filipino'
+        'tl': 'Filipino',
+        'ko': 'Korean'
     }
     
     # Language codes for Whisper
@@ -88,7 +89,8 @@ class Config:
         'pl': 'polish',
         'uk': 'ukrainian',
         'hi': 'hindi',
-        'tl': 'tagalog'
+        'tl': 'tagalog',
+        'ko': 'korean'
     }
 
 # Initialize Flask app
