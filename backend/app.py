@@ -116,6 +116,8 @@ class Conversation:
     messages: List[Dict]
     auto_email: bool = False
     ended: bool = False
+    participant_1_name: str = 'Participant 1'
+    participant_2_name: str = 'Participant 2'
 
 @dataclass
 class Message:
@@ -158,6 +160,8 @@ def init_database():
                 output_language TEXT NOT NULL,
                 auto_email BOOLEAN DEFAULT FALSE,
                 ended BOOLEAN DEFAULT FALSE,
+                participant_1_name TEXT DEFAULT 'Participant 1',
+                participant_2_name TEXT DEFAULT 'Participant 2',
                 FOREIGN KEY (user_email) REFERENCES users (email)
             )
         ''')
@@ -542,7 +546,14 @@ def send_email(to_email: str, subject: str, body: str, conversation_data: Dict =
         """
         
         if conversation_data:
-            html_body += """
+            # Add conversation info
+            conversation = conversation_data.get('conversation', {})
+            html_body += f"""
+            <h3>Conversation Information:</h3>
+            <p><strong>Participants:</strong> {conversation.get('participant_1_name', 'Participant 1')} ↔ {conversation.get('participant_2_name', 'Participant 2')}</p>
+            <p><strong>Languages:</strong> {conversation.get('input_language', 'auto')} → {conversation.get('output_language', 'en')}</p>
+            <p><strong>Created:</strong> {conversation.get('created_at', 'Unknown')}</p>
+            
             <h3>Conversation Details:</h3>
             <table border="1" style="border-collapse: collapse; width: 100%;">
                 <tr>
@@ -554,10 +565,17 @@ def send_email(to_email: str, subject: str, body: str, conversation_data: Dict =
             """
             
             for message in conversation_data.get('messages', []):
+                # Map speaker to participant name
+                speaker_name = message['speaker']
+                if speaker_name == 'participant_1':
+                    speaker_name = conversation.get('participant_1_name', 'Participant 1')
+                elif speaker_name == 'participant_2':
+                    speaker_name = conversation.get('participant_2_name', 'Participant 2')
+                
                 html_body += f"""
                 <tr>
                     <td>{message['timestamp']}</td>
-                    <td>{message['speaker']}</td>
+                    <td>{speaker_name}</td>
                     <td>{message['original_text']}</td>
                     <td>{message['translated_text']}</td>
                 </tr>
@@ -1070,6 +1088,54 @@ def update_conversation_languages(conversation_id):
         logger.error(f"Error updating conversation languages: {e}")
         return jsonify({'error': 'Failed to update language settings'}), 500
 
+@app.route('/translation-pwa/api/conversations/<conversation_id>/participants', methods=['PUT'])
+def update_conversation_participants(conversation_id):
+    """Update conversation participant names"""
+    try:
+        if 'user_email' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+        participant_1_name = data.get('participant_1_name', 'Participant 1').strip()
+        participant_2_name = data.get('participant_2_name', 'Participant 2').strip()
+        
+        if not participant_1_name:
+            participant_1_name = 'Participant 1'
+        if not participant_2_name:
+            participant_2_name = 'Participant 2'
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if conversation exists and belongs to user
+            cursor.execute('''
+                SELECT * FROM conversations 
+                WHERE id = ? AND user_email = ?
+            ''', (conversation_id, session['user_email']))
+            conversation = cursor.fetchone()
+            
+            if not conversation:
+                return jsonify({'error': 'Conversation not found'}), 404
+            
+            # Update participant names
+            cursor.execute('''
+                UPDATE conversations 
+                SET participant_1_name = ?, participant_2_name = ?
+                WHERE id = ? AND user_email = ?
+            ''', (participant_1_name, participant_2_name, conversation_id, session['user_email']))
+            
+            conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'participant_1_name': participant_1_name,
+            'participant_2_name': participant_2_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating conversation participants: {e}")
+        return jsonify({'error': 'Failed to update participant names'}), 500
+
 @app.route('/translation-pwa/api/conversations/<conversation_id>/email', methods=['POST'])
 def send_conversation_email(conversation_id):
     """Send conversation via email"""
@@ -1151,6 +1217,85 @@ def text_to_speech_endpoint():
     except Exception as e:
         logger.error(f"TTS endpoint error: {e}")
         return jsonify({'error': f'TTS failed: {str(e)}'}), 500
+
+@app.route('/translation-pwa/api/translation/text', methods=['POST'])
+def translate_text_endpoint():
+    """Translate text directly"""
+    try:
+        if 'user_email' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        conversation_id = data.get('conversation_id')
+        speaker = data.get('speaker', 'participant_1')
+        
+        if not text:
+            return jsonify({'error': 'Text is required'}), 400
+        
+        if not conversation_id:
+            return jsonify({'error': 'Conversation ID is required'}), 400
+        
+        # Get conversation details and add message in one transaction
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT input_language, output_language, user_email
+                FROM conversations 
+                WHERE id = ? AND user_email = ?
+            """, (conversation_id, session['user_email']))
+            
+            conversation = cursor.fetchone()
+            if not conversation:
+                return jsonify({'error': 'Conversation not found'}), 404
+            
+            input_lang, output_lang, user_email = conversation
+        
+            # Translate the text
+            translator = Translator()
+            translated_result = translator.translate(text, src=input_lang, dest=output_lang)
+            translated_text = translated_result.text
+            
+            # Add message to conversation
+            cursor.execute("""
+                INSERT INTO messages (id, conversation_id, timestamp, speaker, original_text, 
+                                    translated_text, input_language, output_language)
+                VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?)
+            """, (f"text_{int(datetime.datetime.now().timestamp() * 1000)}", 
+                  conversation_id, speaker, text, translated_text, input_lang, output_lang))
+            
+            conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'translated_text': translated_text,
+            'original_text': text
+        })
+        
+    except Exception as e:
+        logger.error(f"Text translation error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/translation-pwa/api/conversations/<conversation_id>/name', methods=['PUT'])
+def update_conversation_name(conversation_id):
+    """Update conversation name (placeholder - requires database schema update)"""
+    try:
+        if 'user_email' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        
+        if not name:
+            return jsonify({'error': 'Name is required'}), 400
+        
+        # For now, just return success without updating database
+        # This would require adding a 'name' column to the conversations table
+        return jsonify({'success': True, 'name': name, 'note': 'Name saved locally only'})
+        
+    except Exception as e:
+        logger.error(f"Update conversation name error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 # Admin routes
 @app.route('/translation-pwa/api/admin/languages', methods=['GET'])
