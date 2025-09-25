@@ -800,35 +800,52 @@ def add_message(conversation_id):
             if not conversation:
                 return jsonify({'error': 'Conversation not found'}), 404
         
-        # Handle audio file upload
-        audio_file = None
-        if 'audio' in request.files:
-            audio_file = request.files['audio']
-            if audio_file.filename:
-                filename = secure_filename(audio_file.filename)
-                audio_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-                os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-                audio_file.save(audio_path)
-                audio_file = filename
-        
-        # Transcribe audio if provided
+        # Handle text input or audio file upload
         original_text = ""
         detected_language = conversation['input_language']
+        audio_file = None
         
-        if audio_file:
-            audio_path = os.path.join(Config.UPLOAD_FOLDER, audio_file)
-            with open(audio_path, 'rb') as f:
-                audio_data = f.read()
+        # Check if this is a text message
+        if request.is_json:
+            data = request.get_json()
+            if 'text' in data:
+                original_text = data['text'].strip()
+                if not original_text:
+                    return jsonify({'error': 'Text cannot be empty'}), 400
+                # For text input, use the conversation's input language
+                detected_language = conversation['input_language']
+            else:
+                return jsonify({'error': 'No text provided'}), 400
+        else:
+            # Handle audio file upload
+            if 'audio' in request.files:
+                audio_file = request.files['audio']
+                if audio_file.filename:
+                    filename = secure_filename(audio_file.filename)
+                    audio_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+                    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+                    audio_file.save(audio_path)
+                    audio_file = filename
             
-            transcription_result = transcribe_audio(audio_data, conversation['input_language'])
-            
-            # Check if transcription failed due to model not being ready
-            if 'error' in transcription_result:
-                logger.error(f"Transcription failed: {transcription_result['error']}")
-                return jsonify({'error': f"Audio processing failed: {transcription_result['error']}"}), 503
-            
-            original_text = transcription_result['text']
-            detected_language = transcription_result.get('language', conversation['input_language'])
+            # Transcribe audio if provided
+            if audio_file:
+                audio_path = os.path.join(Config.UPLOAD_FOLDER, audio_file)
+                with open(audio_path, 'rb') as f:
+                    audio_data = f.read()
+                
+                transcription_result = transcribe_audio(audio_data, conversation['input_language'])
+                
+                # Check if transcription failed due to model not being ready
+                if 'error' in transcription_result:
+                    logger.error(f"Transcription failed: {transcription_result['error']}")
+                    return jsonify({'error': f"Audio processing failed: {transcription_result['error']}"}), 503
+                
+                original_text = transcription_result['text']
+                detected_language = transcription_result.get('language', conversation['input_language'])
+        
+        # Check if we have text to translate
+        if not original_text:
+            return jsonify({'error': 'No text to translate'}), 400
         
         # Translate text
         translated_text = translate_text(original_text, detected_language, conversation['output_language'])

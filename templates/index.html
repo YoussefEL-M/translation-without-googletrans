@@ -464,6 +464,25 @@
                     </p>
                 </div>
                 
+                <!-- Text input for manual translation -->
+                <div class="text-input-section" id="textInputSection" style="display: none; margin: 20px 0; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e5e7eb;">
+                    <h3 style="margin-bottom: 15px; color: #1f2937; font-size: 1.1rem;">Type to Translate</h3>
+                    <button 
+                        class="btn btn-primary" 
+                        onclick="sendTextMessage()" 
+                        id="sendTextBtn" 
+                        style="width: 100%; margin-bottom: 15px; padding: 12px 20px;"
+                    >
+                        Send
+                    </button>
+                    <textarea 
+                        id="textInput" 
+                        placeholder="Type your message here..." 
+                        style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-family: inherit; font-size: 14px; resize: vertical;"
+                        rows="3"
+                    ></textarea>
+                </div>
+                
                 <div class="conversation-controls">
                     <button class="btn btn-warning" onclick="sendConversationEmail()" id="emailBtn" disabled style="width: 100%; margin-bottom: 0;">
                         📧 Send to Email
@@ -777,6 +796,8 @@
                     document.getElementById('emailBtn').disabled = false;
                     updateConversationButton();
                     
+                    // Show text input section
+                    document.getElementById('textInputSection').style.display = 'block';
                     
                     // Populate modal language controls
                     populateModalLanguageControls(inputLang, outputLang);
@@ -786,7 +807,7 @@
                     
                     // Clear conversation history
                     document.getElementById('conversationHistory').innerHTML = 
-                        '<p style="text-align: center; color: #6b7280; padding: 20px;">Conversation started. Click the microphone to record your message.</p>';
+                        '<p style="text-align: center; color: #6b7280; padding: 20px;">Conversation started. Click the microphone to record your message or type below.</p>';
                     
                     showSuccess('Conversation started successfully!');
                 } else {
@@ -821,8 +842,9 @@
                     document.getElementById('emailBtn').disabled = true;
                     updateConversationButton();
                     
-                    
-                    
+                    // Hide text input section
+                    document.getElementById('textInputSection').style.display = 'none';
+                    document.getElementById('textInput').value = '';
                     
                     showSuccess('Conversation ended successfully!');
                     await loadConversations();
@@ -1014,6 +1036,75 @@
                 console.error('Send audio error:', error);
                 showError('Failed to process audio');
                 document.getElementById('recordStatus').textContent = 'Error processing audio';
+            }
+        }
+        
+        async function sendTextMessage() {
+            if (!currentConversationId) {
+                showError('Please start a conversation first');
+                return;
+            }
+            
+            const textInput = document.getElementById('textInput');
+            const text = textInput.value.trim();
+            
+            if (!text) {
+                showError('Please enter some text to translate');
+                return;
+            }
+            
+            try {
+                const sendBtn = document.getElementById('sendTextBtn');
+                sendBtn.disabled = true;
+                sendBtn.textContent = 'Sending...';
+                
+                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text
+                    })
+                });
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const errorText = await response.text();
+                    console.error('Non-JSON response:', errorText);
+                    throw new Error(`Server returned non-JSON response: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const message = data.message;
+                    lastTranslatedText = message.translated_text;
+                    
+                    // Add message to conversation display
+                    addMessageToDisplay(message);
+                    
+                    // Broadcast to other participants
+                    socket.emit('new_message', {
+                        conversation_id: currentConversationId,
+                        message: message
+                    });
+                    
+                    // Clear the text input
+                    textInput.value = '';
+                    
+                    showSuccess('Message sent successfully!');
+                } else {
+                    showError(data.error || 'Failed to translate text');
+                }
+            } catch (error) {
+                console.error('Send text error:', error);
+                showError('Failed to send message');
+            } finally {
+                const sendBtn = document.getElementById('sendTextBtn');
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
             }
         }
         
