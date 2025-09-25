@@ -450,24 +450,21 @@
 
         /* Inline Text Input Areas */
         .text-input-area.inline {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            bottom: 20px;
-            width: calc(100% - 40px);
-            height: calc(100% - 40px);
+            position: relative;
+            width: 100%;
+            height: 120px;
             margin: 0;
             z-index: 5;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 12px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 20px;
         }
 
         .text-input-header {
@@ -2079,8 +2076,8 @@
             const recordBtn = document.getElementById('topRecordBtn');
             const textBtn = document.getElementById('topTextBtn');
             
-            if (textInput.style.display === 'none') {
-                textInput.style.display = 'block';
+            if (textInput.style.display === 'none' || textInput.style.display === '') {
+                textInput.style.display = 'flex';
                 recordBtn.style.display = 'none';
                 textBtn.style.display = 'none';
                 document.getElementById('topTextMessage').focus();
@@ -2097,6 +2094,12 @@
             textInput.style.display = 'none';
             recordBtn.style.display = 'flex';
             textBtn.style.display = 'flex';
+            
+            // Ensure button content is preserved
+            if (recordBtn.textContent.trim() === '' || recordBtn.textContent === '⏹️') {
+                recordBtn.textContent = '🎤';
+            }
+            
             document.getElementById('topTextMessage').value = '';
         }
 
@@ -2105,8 +2108,8 @@
             const recordBtn = document.getElementById('bottomRecordBtn');
             const textBtn = document.getElementById('bottomTextBtn');
             
-            if (textInput.style.display === 'none') {
-                textInput.style.display = 'block';
+            if (textInput.style.display === 'none' || textInput.style.display === '') {
+                textInput.style.display = 'flex';
                 recordBtn.style.display = 'none';
                 textBtn.style.display = 'none';
                 document.getElementById('bottomTextMessage').focus();
@@ -2123,6 +2126,12 @@
             textInput.style.display = 'none';
             recordBtn.style.display = 'flex';
             textBtn.style.display = 'flex';
+            
+            // Ensure button content is preserved
+            if (recordBtn.textContent.trim() === '' || recordBtn.textContent === '⏹️') {
+                recordBtn.textContent = '🎤';
+            }
+            
             document.getElementById('bottomTextMessage').value = '';
         }
 
