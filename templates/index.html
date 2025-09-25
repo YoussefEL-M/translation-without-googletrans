@@ -234,6 +234,10 @@
             background: linear-gradient(135deg, #10b981, #059669);
             color: white;
             box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
         
         .top-record-btn:hover {
@@ -401,6 +405,10 @@
             background: linear-gradient(135deg, #8b5cf6, #7c3aed);
             color: white;
             box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
         
         .bottom-record-btn:hover {
@@ -2078,8 +2086,8 @@
             
             if (textInput.style.display === 'none' || textInput.style.display === '') {
                 textInput.style.display = 'flex';
-                recordBtn.style.display = 'none';
-                textBtn.style.display = 'none';
+                recordBtn.style.visibility = 'hidden';
+                textBtn.style.visibility = 'hidden';
                 document.getElementById('topTextMessage').focus();
             } else {
                 hideTopTextInput();
@@ -2092,11 +2100,11 @@
             const textBtn = document.getElementById('topTextBtn');
             
             textInput.style.display = 'none';
-            recordBtn.style.display = 'flex';
-            textBtn.style.display = 'flex';
+            recordBtn.style.visibility = 'visible';
+            textBtn.style.visibility = 'visible';
             
             // Ensure button content is preserved
-            if (recordBtn.textContent.trim() === '' || recordBtn.textContent === '⏹️') {
+            if (!recordBtn.textContent.includes('🎤') && !recordBtn.classList.contains('recording')) {
                 recordBtn.textContent = '🎤';
             }
             
@@ -2110,8 +2118,8 @@
             
             if (textInput.style.display === 'none' || textInput.style.display === '') {
                 textInput.style.display = 'flex';
-                recordBtn.style.display = 'none';
-                textBtn.style.display = 'none';
+                recordBtn.style.visibility = 'hidden';
+                textBtn.style.visibility = 'hidden';
                 document.getElementById('bottomTextMessage').focus();
             } else {
                 hideBottomTextInput();
@@ -2124,11 +2132,11 @@
             const textBtn = document.getElementById('bottomTextBtn');
             
             textInput.style.display = 'none';
-            recordBtn.style.display = 'flex';
-            textBtn.style.display = 'flex';
+            recordBtn.style.visibility = 'visible';
+            textBtn.style.visibility = 'visible';
             
             // Ensure button content is preserved
-            if (recordBtn.textContent.trim() === '' || recordBtn.textContent === '⏹️') {
+            if (!recordBtn.textContent.includes('🎤') && !recordBtn.classList.contains('recording')) {
                 recordBtn.textContent = '🎤';
             }
             
