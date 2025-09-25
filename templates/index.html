@@ -2086,8 +2086,8 @@
             
             if (textInput.style.display === 'none' || textInput.style.display === '') {
                 textInput.style.display = 'flex';
-                recordBtn.style.visibility = 'hidden';
-                textBtn.style.visibility = 'hidden';
+                recordBtn.style.display = 'none';
+                textBtn.style.display = 'none';
                 document.getElementById('topTextMessage').focus();
             } else {
                 hideTopTextInput();
@@ -2100,8 +2100,8 @@
             const textBtn = document.getElementById('topTextBtn');
             
             textInput.style.display = 'none';
-            recordBtn.style.visibility = 'visible';
-            textBtn.style.visibility = 'visible';
+            recordBtn.style.display = 'flex';
+            textBtn.style.display = 'flex';
             
             // Ensure button content is preserved
             if (!recordBtn.textContent.includes('🎤') && !recordBtn.classList.contains('recording')) {
@@ -2118,8 +2118,8 @@
             
             if (textInput.style.display === 'none' || textInput.style.display === '') {
                 textInput.style.display = 'flex';
-                recordBtn.style.visibility = 'hidden';
-                textBtn.style.visibility = 'hidden';
+                recordBtn.style.display = 'none';
+                textBtn.style.display = 'none';
                 document.getElementById('bottomTextMessage').focus();
             } else {
                 hideBottomTextInput();
@@ -2132,8 +2132,8 @@
             const textBtn = document.getElementById('bottomTextBtn');
             
             textInput.style.display = 'none';
-            recordBtn.style.visibility = 'visible';
-            textBtn.style.visibility = 'visible';
+            recordBtn.style.display = 'flex';
+            textBtn.style.display = 'flex';
             
             // Ensure button content is preserved
             if (!recordBtn.textContent.includes('🎤') && !recordBtn.classList.contains('recording')) {
