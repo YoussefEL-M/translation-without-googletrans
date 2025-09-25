@@ -36,8 +36,8 @@ from pydub import AudioSegment
 import io
 import ffmpeg
 import subprocess
-from TTS.api import TTS
 import speech_recognition as sr
+import pyttsx3
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -248,10 +248,37 @@ def init_tts():
     """Initialize text-to-speech engine with multilingual support"""
     global tts_engine
     if tts_engine is None:
-        # Skip Coqui TTS models that require license confirmation
-        # Go directly to fallback options that don't require interactive input
         try:
-            # Try Festival first (no license required)
+            # Try Chatterbox TTS first (best quality, open source)
+            logger.info("Trying Chatterbox TTS...")
+            from chatterbox.tts import ChatterboxTTS
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+            
+            # Automatically detect the best available device
+            if torch.cuda.is_available():
+                device = "cuda"
+            else:
+                device = "cpu"
+            
+            logger.info(f"Using device: {device}")
+            
+            # Try multilingual model first
+            try:
+                tts_engine = ChatterboxMultilingualTTS.from_pretrained(device=device)
+                logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
+                return
+            except Exception as e:
+                logger.warning(f"Chatterbox Multilingual TTS failed: {e}")
+                # Fallback to regular Chatterbox TTS
+                tts_engine = ChatterboxTTS.from_pretrained(device=device)
+                logger.info("TTS engine initialized with Chatterbox TTS")
+                return
+                
+        except Exception as e1:
+            logger.error(f"Chatterbox TTS not available: {e1}")
+        
+        try:
+            # Try Festival (works well in containers)
             logger.info("Trying Festival TTS...")
             result = subprocess.run(['festival', '--version'], 
                                   capture_output=True, text=True, timeout=5)
@@ -259,11 +286,11 @@ def init_tts():
                 tts_engine = 'festival'
                 logger.info("TTS engine initialized with Festival")
                 return
-        except Exception as e1:
-            logger.error(f"Festival not available: {e1}")
+        except Exception as e2:
+            logger.error(f"Festival not available: {e2}")
         
         try:
-            # Try espeak (no license required)
+            # Try espeak (works well in containers)
             logger.info("Trying espeak TTS...")
             result = subprocess.run(['espeak', '--version'], 
                                   capture_output=True, text=True, timeout=5)
@@ -271,10 +298,21 @@ def init_tts():
                 tts_engine = 'espeak'
                 logger.info("TTS engine initialized with espeak")
                 return
-        except Exception as e2:
-            logger.error(f"espeak not available: {e2}")
+        except Exception as e3:
+            logger.error(f"espeak not available: {e3}")
         
-        # If no fallback TTS is available, set to None
+        try:
+            # Try pyttsx3 (last resort - doesn't work well in containers)
+            logger.info("Trying pyttsx3 TTS...")
+            engine = pyttsx3.init()
+            if engine:
+                tts_engine = engine
+                logger.info("TTS engine initialized with pyttsx3")
+                return
+        except Exception as e4:
+            logger.error(f"pyttsx3 not available: {e4}")
+        
+        # If no TTS is available, set to None
         logger.warning("No TTS engine available - text-to-speech will be disabled")
         tts_engine = None
 
@@ -399,39 +437,9 @@ def translate_text(text: str, from_lang: str, to_lang: str) -> str:
         logger.error(f"Translation error: {e}")
         return text
 
-def get_xtts_language_code(language: str) -> str:
-    """Map language codes to XTTS supported language codes"""
-    xtts_language_map = {
-        'en': 'en',      # English
-        'es': 'es',      # Spanish
-        'fr': 'fr',      # French
-        'de': 'de',      # German
-        'it': 'it',      # Italian
-        'pt': 'pt',      # Portuguese
-        'pl': 'pl',      # Polish
-        'tr': 'tr',      # Turkish
-        'ru': 'ru',      # Russian
-        'nl': 'nl',      # Dutch
-        'cs': 'cs',      # Czech
-        'ar': 'ar',      # Arabic
-        'zh': 'zh',      # Chinese
-        'ja': 'ja',      # Japanese
-        'ko': 'ko',      # Korean
-        'hi': 'hi',      # Hindi
-        'da': 'da',      # Danish
-        'sv': 'sv',      # Swedish
-        'no': 'no',      # Norwegian
-        'fi': 'fi',      # Finnish
-        'uk': 'uk',      # Ukrainian
-        'sr': 'sr',      # Serbian
-        'ur': 'ur',      # Urdu
-        'tl': 'en',      # Filipino (Tagalog) - fallback to English
-        'auto': 'en'     # Auto-detect fallback to English
-    }
-    return xtts_language_map.get(language, 'en')
 
 def text_to_speech(text: str, language: str) -> bytes:
-    """Convert text to speech using Coqui TTS, Festival, or espeak fallback"""
+    """Convert text to speech using Chatterbox TTS, pyttsx3, Festival, or espeak fallback"""
     try:
         init_tts()
         
@@ -442,21 +450,39 @@ def text_to_speech(text: str, language: str) -> bytes:
         # Create temporary file for output
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             try:
-                if tts_engine != 'festival' and tts_engine != 'espeak':
-                    # Use Coqui TTS (best quality)
-                    logger.info(f"Using Coqui TTS for text: {text[:50]}... in language: {language}")
+                if hasattr(tts_engine, 'generate'):
+                    # Use Chatterbox TTS (best quality, open source)
+                    logger.info(f"Using Chatterbox TTS for text: {text[:50]}... in language: {language}")
                     
-                    # Check if we have the multilingual XTTS model
-                    if hasattr(tts_engine, 'model_name') and 'xtts' in tts_engine.model_name.lower():
-                        # Use multilingual XTTS model with language parameter
-                        xtts_lang = get_xtts_language_code(language)
-                        logger.info(f"Using XTTS multilingual model for language: {language} -> {xtts_lang}")
-                        tts_engine.tts_to_file(text=text, file_path=tmp_file.name, language=xtts_lang)
-                    else:
-                        # Use regular Coqui TTS (English-only fallback)
-                        logger.info("Using English-only Coqui TTS model")
-                        tts_engine.tts_to_file(text=text, file_path=tmp_file.name)
+                    # Generate audio using Chatterbox TTS
+                    wav = tts_engine.generate(text)
                     
+                    # Save to temporary file using torchaudio
+                    import torchaudio as ta
+                    ta.save(tmp_file.name, wav, tts_engine.sr)
+                    
+                    logger.info(f"Chatterbox TTS generated audio for language: {language}")
+                
+                elif hasattr(tts_engine, 'save_to_file'):
+                    # Use pyttsx3 (cross-platform, open source)
+                    logger.info(f"Using pyttsx3 for text: {text[:50]}... in language: {language}")
+                    
+                    # Set voice properties
+                    voices = tts_engine.getProperty('voices')
+                    if voices:
+                        # Try to find a voice for the language
+                        for voice in voices:
+                            if language.lower() in voice.id.lower() or language.lower() in voice.name.lower():
+                                tts_engine.setProperty('voice', voice.id)
+                                break
+                    
+                    # Set speech rate
+                    tts_engine.setProperty('rate', 150)
+                    
+                    # Save to file
+                    tts_engine.save_to_file(text, tmp_file.name)
+                    tts_engine.runAndWait()
+                
                 elif tts_engine == 'festival':
                     # Use Festival (fallback)
                     logger.info(f"Using Festival fallback for text: {text[:50]}... in language: {language}")
@@ -506,10 +532,6 @@ def text_to_speech(text: str, language: str) -> bytes:
                     if result.returncode != 0:
                         logger.error(f"espeak failed: {result.stderr}")
                         return b''
-                
-                # Wait a bit for file to be written
-                import time
-                time.sleep(1.0)  # Give more time for Coqui TTS
                 
                 # Read the generated audio file
                 if os.path.exists(tmp_file.name) and os.path.getsize(tmp_file.name) > 0:

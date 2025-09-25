@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     libsndfile1-dev \
     festival \
     festvox-kallpc16k \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

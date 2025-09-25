@@ -12,4 +12,5 @@ werkzeug==2.3.7
 python-socketio==5.9.0
 eventlet==0.33.3
 googletrans==4.0.0rc1
-TTS==0.22.0  # Supports XTTS v2 multilingual models
+pyttsx3==2.90  # Cross-platform TTS with better quality
+git+https://github.com/resemble-ai/chatterbox.git  # High-quality Chatterbox TTS
