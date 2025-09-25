@@ -200,8 +200,17 @@ def init_database():
                 VALUES (?, ?)
             ''', (code, name))
         
+        # Create test account if it doesn't exist
+        test_email = 'test@ballerup.dk'
+        test_password_hash = generate_password_hash('1234567')
+        cursor.execute('''
+            INSERT OR IGNORE INTO users (email, password_hash, is_admin)
+            VALUES (?, ?, TRUE)
+        ''', (test_email, test_password_hash))
+        
         conn.commit()
         logger.info("Database initialized successfully")
+        logger.info(f"Test account created: {test_email}")
 
 def load_whisper_model():
     """Load Whisper model on demand - using smaller model for faster loading"""

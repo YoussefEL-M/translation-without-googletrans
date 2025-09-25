@@ -187,18 +187,24 @@
             font-weight: 600;
         }
         
-        .admin-link {
-            background: rgba(255, 255, 255, 0.2);
+        .logout-btn {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
+            border: none;
             padding: 8px 16px;
             border-radius: 20px;
-            text-decoration: none;
             font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
             transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
         }
         
-        .admin-link:hover {
-            background: rgba(255, 255, 255, 0.3);
+        .logout-btn:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
         }
         
         /* Main Content Area */
@@ -903,7 +909,7 @@
                 min-width: 0;
             }
             
-            .admin-link {
+            .logout-btn {
                 font-size: 0.8rem;
                 padding: 6px 12px;
             }
@@ -1225,7 +1231,7 @@
         <div class="top-bar">
             <button class="menu-toggle" onclick="openSideMenu()">☰</button>
             <div class="app-title">Translation by Semaphor</div>
-            <a href="/translation-pwa/admin" class="admin-link">Admin</a>
+            <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
 
         <!-- Main Content -->
@@ -1701,6 +1707,38 @@
                 showAuthError('Login failed. Please try again.');
             } finally {
                 showLoading(false);
+            }
+        }
+        
+        async function logout() {
+            try {
+                const response = await fetch('/translation-pwa/api/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentUser = null;
+                    currentConversationId = null;
+                    showAuthSection();
+                    // Clear any active conversations
+                    document.getElementById('conversationTitle').textContent = 'No Active Conversation';
+                    document.getElementById('conversationHistory').innerHTML = '';
+                } else {
+                    console.error('Logout failed:', data.error);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Force logout on client side even if server request fails
+                currentUser = null;
+                currentConversationId = null;
+                showAuthSection();
+                document.getElementById('conversationTitle').textContent = 'No Active Conversation';
+                document.getElementById('conversationHistory').innerHTML = '';
             }
         }
         
@@ -2280,9 +2318,6 @@
                 if (data.success) {
                     currentParticipant1Name = participant1Name;
                     currentParticipant2Name = participant2Name;
-                    
-                    // Update conversation history display
-                    updateConversationHistoryDisplay();
                     
                     showStatusMessage('Participant names updated successfully!', 'success');
                     hideParticipantModal();
