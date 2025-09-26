@@ -53,6 +53,7 @@ ENV FLASK_APP=backend/app.py
 ENV FLASK_ENV=production
 ENV TRANSFORMERS_CACHE=/app/.cache/transformers
 ENV HF_HOME=/app/.cache/huggingface
+ENV CUDA_VISIBLE_DEVICES=""
 
 # Expose port
 EXPOSE 8000

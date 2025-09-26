@@ -263,21 +263,40 @@ def init_tts():
             
             logger.info(f"Using device: {device}")
             
-            # Try to initialize Chatterbox TTS
+            # Try to initialize Chatterbox Multilingual TTS first (better language support)
             try:
-                # Initialize Chatterbox TTS with proper configuration
-                tts_engine = chatterbox.ChatterboxTTS.from_pretrained(device=device)
-                logger.info("TTS engine initialized with Chatterbox TTS")
+                # Monkey patch torch.load and safetensors to force CPU loading
+                import torch
+                original_load = torch.load
+                def cpu_load(*args, **kwargs):
+                    kwargs['map_location'] = torch.device('cpu')
+                    return original_load(*args, **kwargs)
+                torch.load = cpu_load
+                
+                # Also patch safetensors if available
+                try:
+                    import safetensors
+                    original_safetensors_load = safetensors.torch.load_file
+                    def cpu_safetensors_load(*args, **kwargs):
+                        kwargs['device'] = 'cpu'
+                        return original_safetensors_load(*args, **kwargs)
+                    safetensors.torch.load_file = cpu_safetensors_load
+                except ImportError:
+                    pass
+                
+                # Initialize Chatterbox Multilingual TTS with proper configuration
+                tts_engine = chatterbox.ChatterboxMultilingualTTS.from_pretrained(device=device)
+                logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
                 return
             except Exception as e:
-                logger.warning(f"Chatterbox TTS initialization failed: {e}")
-                # Try multilingual TTS
+                logger.warning(f"Chatterbox Multilingual TTS initialization failed: {e}")
+                # Try regular TTS as fallback
                 try:
-                    tts_engine = chatterbox.ChatterboxMultilingualTTS.from_pretrained(device=device)
-                    logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
+                    tts_engine = chatterbox.ChatterboxTTS.from_pretrained(device=device)
+                    logger.info("TTS engine initialized with Chatterbox TTS")
                     return
                 except Exception as e2:
-                    logger.warning(f"Chatterbox Multilingual TTS initialization failed: {e2}")
+                    logger.warning(f"Chatterbox TTS initialization failed: {e2}")
                 
         except Exception as e1:
             logger.error(f"Chatterbox TTS not available: {e1}")
