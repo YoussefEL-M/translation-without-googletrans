@@ -48,8 +48,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
-    DATABASE_PATH = '/opt/praktik/translation-pwa/database/conversations.db'
-    UPLOAD_FOLDER = '/opt/praktik/translation-pwa/backend/uploads'
+    DATABASE_PATH = '/app/database/translation_pwa.db'
+    UPLOAD_FOLDER = '/app/backend/uploads'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     SMTP_SERVER = os.environ.get('SMTP_SERVER', 'localhost')
     SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
@@ -251,10 +251,9 @@ def init_tts():
     global tts_engine
     if tts_engine is None:
         try:
-            # Try Chatterbox TTS first (best quality, open source)
+            # Try Chatterbox TTS first (open source, high quality)
             logger.info("Trying Chatterbox TTS...")
-            from chatterbox.tts import ChatterboxTTS
-            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+            import chatterbox
             
             # Automatically detect the best available device
             if torch.cuda.is_available():
@@ -264,17 +263,21 @@ def init_tts():
             
             logger.info(f"Using device: {device}")
             
-            # Try multilingual model first
+            # Try to initialize Chatterbox TTS
             try:
-                tts_engine = ChatterboxMultilingualTTS.from_pretrained(device=device)
-                logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
-                return
-            except Exception as e:
-                logger.warning(f"Chatterbox Multilingual TTS failed: {e}")
-                # Fallback to regular Chatterbox TTS
-                tts_engine = ChatterboxTTS.from_pretrained(device=device)
+                # Initialize Chatterbox TTS with proper configuration
+                tts_engine = chatterbox.ChatterboxTTS.from_pretrained(device=device)
                 logger.info("TTS engine initialized with Chatterbox TTS")
                 return
+            except Exception as e:
+                logger.warning(f"Chatterbox TTS initialization failed: {e}")
+                # Try multilingual TTS
+                try:
+                    tts_engine = chatterbox.ChatterboxMultilingualTTS.from_pretrained(device=device)
+                    logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
+                    return
+                except Exception as e2:
+                    logger.warning(f"Chatterbox Multilingual TTS initialization failed: {e2}")
                 
         except Exception as e1:
             logger.error(f"Chatterbox TTS not available: {e1}")
@@ -452,18 +455,33 @@ def text_to_speech(text: str, language: str) -> bytes:
         # Create temporary file for output
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             try:
-                if hasattr(tts_engine, 'generate'):
+                # Check if it's Chatterbox TTS
+                if hasattr(tts_engine, 'generate') or str(type(tts_engine)).find('chatterbox') != -1:
                     # Use Chatterbox TTS (best quality, open source)
                     logger.info(f"Using Chatterbox TTS for text: {text[:50]}... in language: {language}")
                     
-                    # Generate audio using Chatterbox TTS
-                    wav = tts_engine.generate(text)
-                    
-                    # Save to temporary file using torchaudio
-                    import torchaudio as ta
-                    ta.save(tmp_file.name, wav, tts_engine.sr)
-                    
-                    logger.info(f"Chatterbox TTS generated audio for language: {language}")
+                    try:
+                        # Generate audio using Chatterbox TTS
+                        if hasattr(tts_engine, 'generate'):
+                            wav = tts_engine.generate(text)
+                        else:
+                            # Alternative method for Chatterbox TTS
+                            wav = tts_engine(text)
+                        
+                        # Save to temporary file using torchaudio
+                        import torchaudio as ta
+                        if hasattr(tts_engine, 'sr'):
+                            sample_rate = tts_engine.sr
+                        else:
+                            sample_rate = 22050  # Default sample rate
+                        
+                        ta.save(tmp_file.name, wav, sample_rate)
+                        logger.info(f"Chatterbox TTS generated audio for language: {language}")
+                        
+                    except Exception as e:
+                        logger.error(f"Chatterbox TTS generation failed: {e}")
+                        # Fall back to espeak
+                        raise e
                 
                 elif hasattr(tts_engine, 'save_to_file'):
                     # Use pyttsx3 (cross-platform, open source)
