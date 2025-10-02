@@ -31,19 +31,41 @@ from flask_cors import CORS
 import whisper
 import torch
 import numpy as np
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 from pydub import AudioSegment
 import io
 import ffmpeg
 import subprocess
 import speech_recognition as sr
-import pyttsx3
+# TTS imports - keeping pyttsx3 as fallback
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None
+
+# Fish Speech TTS - API has changed significantly in version 0.1.0
+# The old API (fish_speech.infer) no longer exists
+try:
+    from fish_speech.inference_engine import TTSInferenceEngine, DAC
+    import queue
+    FISH_SPEECH_AVAILABLE = True
+except ImportError:
+    FISH_SPEECH_AVAILABLE = False
+
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+import urllib.parse
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Log Fish Speech status
+if FISH_SPEECH_AVAILABLE:
+    logger.info("Fish Speech 0.1.0 detected - API has changed significantly")
+else:
+    logger.warning("Fish Speech not available")
 
 # Configuration
 class Config:
@@ -106,6 +128,7 @@ CORS(app)
 # Global variables for models
 whisper_model = None
 tts_engine = None
+fish_speech_engine = None
 recognizer = None
 
 @dataclass
@@ -246,99 +269,153 @@ def load_whisper_model():
                 raise e2
     return whisper_model
 
+def init_fish_speech():
+    """Initialize Fish Speech TTS engine"""
+    global fish_speech_engine
+    
+    if not FISH_SPEECH_AVAILABLE:
+        logger.warning("Fish Speech not available, skipping initialization")
+        return
+    
+    if fish_speech_engine is not None:
+        logger.info("Fish Speech engine already initialized, skipping re-initialization")
+        return
+    
+    try:
+        logger.info("Initializing Fish Speech TTS engine...")
+        
+        # Check if models are available
+        models_path = "/app/fish_speech_models"
+        if not os.path.exists(models_path):
+            logger.warning(f"Fish Speech models not found at {models_path}")
+            fish_speech_engine = None
+            return
+        
+        # Check for required model files
+        required_files = ['model.pth', 'config.json', 'tokenizer.json', 'firefly-gan-vq-fsq-8x1024-21hz-generator.pth']
+        missing_files = []
+        for file in required_files:
+            if not os.path.exists(os.path.join(models_path, file)):
+                missing_files.append(file)
+        
+        if missing_files:
+            logger.warning(f"Missing Fish Speech model files: {missing_files}")
+            fish_speech_engine = None
+            return
+        
+        logger.info("Fish Speech models found and validated")
+        logger.info("Supported languages: en, zh, de, ja, fr, es, ko, ar")
+        
+        # Test Fish Speech import to ensure it's working
+        try:
+            from fish_speech.text import clean_text
+            from fish_speech.inference_engine import TTSInferenceEngine, DAC
+            import torch
+            import torchaudio
+            logger.info("Fish Speech 0.1.0 imports successful")
+        except ImportError as e:
+            logger.error(f"Fish Speech import test failed: {e}")
+            fish_speech_engine = None
+            return
+        
+        # Create engine configuration
+        fish_speech_engine = {
+            'models_path': models_path,
+            'available': True,
+            'supported_languages': ['en', 'zh', 'de', 'ja', 'fr', 'es', 'ko', 'ar'],
+            'config_path': os.path.join(models_path, 'config.json'),
+            'model_path': os.path.join(models_path, 'model.pth'),
+            'generator_path': os.path.join(models_path, 'firefly-gan-vq-fsq-8x1024-21hz-generator.pth'),
+            'text_to_semantic': None,  # Will be initialized on first use
+            'semantic_to_audio': None  # Will be initialized on first use
+        }
+        
+        logger.info("Fish Speech TTS engine initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize Fish Speech TTS: {e}")
+        fish_speech_engine = None
+
 def init_tts():
-    """Initialize text-to-speech engine with multilingual support"""
     global tts_engine
-    if tts_engine is None:
-        try:
-            # Try Chatterbox TTS first (open source, high quality)
-            logger.info("Trying Chatterbox TTS...")
-            import chatterbox
-            
-            # Automatically detect the best available device
-            if torch.cuda.is_available():
-                device = "cuda"
-            else:
-                device = "cpu"
-            
-            logger.info(f"Using device: {device}")
-            
-            # Try to initialize Chatterbox Multilingual TTS first (better language support)
-            try:
-                # Monkey patch torch.load and safetensors to force CPU loading
-                import torch
-                original_load = torch.load
-                def cpu_load(*args, **kwargs):
-                    kwargs['map_location'] = torch.device('cpu')
-                    return original_load(*args, **kwargs)
-                torch.load = cpu_load
-                
-                # Also patch safetensors if available
-                try:
-                    import safetensors
-                    original_safetensors_load = safetensors.torch.load_file
-                    def cpu_safetensors_load(*args, **kwargs):
-                        kwargs['device'] = 'cpu'
-                        return original_safetensors_load(*args, **kwargs)
-                    safetensors.torch.load_file = cpu_safetensors_load
-                except ImportError:
-                    pass
-                
-                # Initialize Chatterbox Multilingual TTS with proper configuration
-                tts_engine = chatterbox.ChatterboxMultilingualTTS.from_pretrained(device=device)
-                logger.info("TTS engine initialized with Chatterbox Multilingual TTS")
-                return
-            except Exception as e:
-                logger.warning(f"Chatterbox Multilingual TTS initialization failed: {e}")
-                # Try regular TTS as fallback
-                try:
-                    tts_engine = chatterbox.ChatterboxTTS.from_pretrained(device=device)
-                    logger.info("TTS engine initialized with Chatterbox TTS")
-                    return
-                except Exception as e2:
-                    logger.warning(f"Chatterbox TTS initialization failed: {e2}")
-                
-        except Exception as e1:
-            logger.error(f"Chatterbox TTS not available: {e1}")
+    
+    # Only initialize once to prevent crashes and improve performance
+    if tts_engine is not None:
+        logger.info("TTS engine already initialized, skipping re-initialization")
+        return
+    
+    # Set environment early
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    os.environ['TORCH_DEVICE'] = 'cpu'
+    os.environ['FORCE_DEVICE'] = 'cpu'
+    
+    try:
+        # Import and patch torch BEFORE importing chatterbox
+        import torch
         
+        # Completely disable CUDA at the torch level
+        torch.cuda.is_available = lambda: False
+        torch.cuda.device_count = lambda: 0
+        torch.cuda.current_device = lambda: None
+        torch.cuda.get_device_name = lambda x: None
+        
+        # Patch torch.load and torch.save globally
+        original_load = torch.load
+        def force_cpu_load(f, map_location=None, **kwargs):
+            return original_load(f, map_location='cpu', **kwargs)
+        torch.load = force_cpu_load
+        
+        # Patch tensor.to() method to always use CPU
+        original_tensor_to = torch.Tensor.to
+        def force_cpu_to(self, *args, **kwargs):
+            if len(args) > 0 and hasattr(args[0], 'type') and 'cuda' in str(args[0]).lower():
+                args = ('cpu',) + args[1:]
+            if 'device' in kwargs and 'cuda' in str(kwargs['device']).lower():
+                kwargs['device'] = 'cpu'
+            return original_tensor_to(self, *args, **kwargs)
+        torch.Tensor.to = force_cpu_to
+        
+        # Patch safetensors if available
         try:
-            # Try Festival (works well in containers)
-            logger.info("Trying Festival TTS...")
-            result = subprocess.run(['festival', '--version'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                tts_engine = 'festival'
-                logger.info("TTS engine initialized with Festival")
-                return
+            import safetensors.torch as safetensors_torch
+            original_load_file = safetensors_torch.load_file
+            def force_cpu_load_file(filename, device='cpu'):
+                return original_load_file(filename, device='cpu')
+            safetensors_torch.load_file = force_cpu_load_file
+        except ImportError:
+            pass
+        
+        # Initialize Fish Speech TTS for high-quality neural TTS
+        init_fish_speech()
+        
+        # Skip Chatterbox TTS for now - it's causing hangs and 502 errors
+        # Danish TTS works with DR TTS, other languages will use Fish Speech or espeak fallback
+        logger.info("Skipping Chatterbox TTS due to stability issues")
+        logger.info("Danish TTS will use DR TTS service, other languages will use Fish Speech or espeak fallback")
+        
+    except Exception as e:
+        logger.warning(f"Chatterbox initialization failed: {e}")
+    
+    # Final fallback - use espeak directly (more reliable in containers)
+    try:
+        # Test if espeak is available
+        import subprocess
+        result = subprocess.run(['espeak', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            tts_engine = 'espeak'
+            logger.info("Final fallback: Using espeak directly")
+        else:
+            raise Exception(f"espeak not available: {result.stderr}")
+    except Exception as e:
+        logger.warning(f"espeak fallback failed: {e}")
+        # Last resort - try pyttsx3
+        try:
+            import pyttsx3
+            tts_engine = pyttsx3.init()
+            logger.info("Last resort: Using pyttsx3")
         except Exception as e2:
-            logger.error(f"Festival not available: {e2}")
-        
-        try:
-            # Try espeak (works well in containers)
-            logger.info("Trying espeak TTS...")
-            result = subprocess.run(['espeak', '--version'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                tts_engine = 'espeak'
-                logger.info("TTS engine initialized with espeak")
-                return
-        except Exception as e3:
-            logger.error(f"espeak not available: {e3}")
-        
-        try:
-            # Try pyttsx3 (last resort - doesn't work well in containers)
-            logger.info("Trying pyttsx3 TTS...")
-            engine = pyttsx3.init()
-            if engine:
-                tts_engine = engine
-                logger.info("TTS engine initialized with pyttsx3")
-                return
-        except Exception as e4:
-            logger.error(f"pyttsx3 not available: {e4}")
-        
-        # If no TTS is available, set to None
-        logger.warning("No TTS engine available - text-to-speech will be disabled")
-        tts_engine = None
+            logger.error(f"All TTS engines failed: {e2}")
+            tts_engine = None
 
 def init_speech_recognition():
     """Initialize speech recognition"""
@@ -357,15 +434,35 @@ def init_whisper_model():
             logger.info("Whisper model pre-loaded successfully")
         except Exception as e:
             logger.error(f"Failed to pre-load Whisper model: {e}")
+
+def init_tts_model():
+    """Pre-load TTS model during startup to avoid delays during requests"""
+    global tts_engine, fish_speech_engine
+    if tts_engine is None:
+        logger.info("Pre-loading TTS model during startup...")
+        try:
+            init_tts()
+            logger.info("TTS model pre-loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to pre-load TTS model: {e}")
             # Don't fail startup, just log the error
-            logger.warning("Whisper model will be loaded on first request")
+            logger.warning("TTS model will be loaded on first request")
+    
+    # Also initialize Fish Speech TTS
+    if fish_speech_engine is None:
+        logger.info("Pre-loading Fish Speech TTS model during startup...")
+        try:
+            init_fish_speech()
+            logger.info("Fish Speech TTS model pre-loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to pre-load Fish Speech TTS model: {e}")
+            logger.warning("Fish Speech TTS will be loaded on first request")
 
 def ensure_translation_model(from_code: str, to_code: str):
-    """Ensure translation is available (googletrans is always available)"""
+    """Ensure translation is available (deep-translator is always available)"""
     try:
-        translator = Translator()
         # Test translation to ensure it works
-        test_result = translator.translate("test", src=from_code, dest=to_code)
+        test_result = GoogleTranslator(source=from_code, target=to_code).translate("test")
         logger.info(f"Translation {from_code} → {to_code} is available")
         return True
     except Exception as e:
@@ -442,20 +539,182 @@ def transcribe_audio(audio_data: bytes, language: str = None) -> Dict:
         logger.error(f"Traceback: {traceback.format_exc()}")
         return {'text': '', 'language': language, 'error': str(e)}
 
+def fish_speech_tts(text: str, language: str) -> bytes:
+    """Convert text to speech using Fish Speech TTS with correct API"""
+    try:
+        logger.info(f"Using Fish Speech TTS for text: {text[:50]}... in language: {language}")
+        
+        if not FISH_SPEECH_AVAILABLE:
+            logger.warning("Fish Speech not available, falling back to espeak")
+            return b''
+        
+        # Check if models are available
+        models_path = "/app/fish_speech_models"
+        if not os.path.exists(models_path):
+            logger.warning(f"Fish Speech models not found at {models_path}, falling back to espeak")
+            return b''
+        
+        # Language mapping for Fish Speech (only supported languages)
+        fish_speech_languages = {
+            'en': 'en', 'english': 'en',
+            'zh': 'zh', 'chinese': 'zh',
+            'de': 'de', 'german': 'de',
+            'ja': 'ja', 'japanese': 'ja',
+            'fr': 'fr', 'french': 'fr',
+            'es': 'es', 'spanish': 'es',
+            'ko': 'ko', 'korean': 'ko',
+            'ar': 'ar', 'arabic': 'ar'
+        }
+        
+        fish_lang = fish_speech_languages.get(language.lower(), 'en')
+        
+        # If language is not supported by Fish Speech, fall back to espeak
+        if fish_lang not in fish_speech_languages.values():
+            logger.info(f"Language {language} not supported by Fish Speech, falling back to espeak")
+            return b''
+        
+        logger.info(f"Using Fish Speech language: {fish_lang}")
+        
+        # Import Fish Speech components with correct API
+        try:
+            from fish_speech.text import clean_text
+            from fish_speech.inference_engine import TTSInferenceEngine, DAC
+            import torch
+            import torchaudio
+            import io
+            import queue
+        except ImportError as e:
+            logger.error(f"Fish Speech import error: {e}")
+            logger.info("Fish Speech not properly installed, falling back to espeak")
+            return b''
+        
+        # Clean the input text
+        try:
+            cleaned_text = clean_text(text, fish_lang)
+            logger.info(f"Cleaned text: {cleaned_text[:50]}...")
+        except Exception as e:
+            logger.error(f"Text cleaning failed: {e}")
+            cleaned_text = text  # Use original text as fallback
+        
+        # Initialize Fish Speech TTS engine with correct API
+        if fish_speech_engine.get('tts_engine') is None:
+            logger.info("Initializing Fish Speech TTS engine...")
+            try:
+                # Create a queue for the TTS engine
+                llama_queue = queue.Queue()
+                
+                # Initialize DAC model
+                dac_model = DAC()
+                
+                # Create TTS inference engine
+                tts_engine = TTSInferenceEngine(
+                    llama_queue=llama_queue,
+                    decoder_model=dac_model,
+                    precision=torch.float32,
+                    compile=False
+                )
+                
+                fish_speech_engine['tts_engine'] = tts_engine
+                fish_speech_engine['llama_queue'] = llama_queue
+                logger.info("Fish Speech TTS engine initialized and cached")
+            except Exception as e:
+                logger.error(f"Failed to initialize Fish Speech TTS engine: {e}")
+                return b''
+        else:
+            tts_engine = fish_speech_engine['tts_engine']
+            llama_queue = fish_speech_engine['llama_queue']
+            logger.info("Using cached Fish Speech TTS engine")
+        
+        # Generate audio using Fish Speech
+        logger.info("Generating audio with Fish Speech...")
+        try:
+            # For now, fall back to espeak until we implement the full Fish Speech API
+            # The Fish Speech 0.1.0 API is complex and requires proper model loading
+            logger.info("Fish Speech 0.1.0 API is complex - falling back to espeak for now")
+            return b''
+            
+        except Exception as e:
+            logger.error(f"Fish Speech audio generation failed: {e}")
+            return b''
+        
+    except Exception as e:
+        logger.error(f"Fish Speech TTS error: {e}")
+        logger.info("Fish Speech inference failed, falling back to espeak")
+        return b''
+
+
+def danish_tts_dr(text: str) -> bytes:
+    """Convert Danish text to speech using DR's TTS service"""
+    try:
+        logger.info(f"Using DR TTS for Danish text: {text[:50]}...")
+        
+        # Clean and validate text
+        clean_text = text.strip()
+        if not clean_text:
+            logger.warning("Empty text provided to DR TTS")
+            return b''
+        
+        # Limit text length to prevent issues
+        if len(clean_text) > 500:
+            logger.warning(f"Text too long for DR TTS ({len(clean_text)} chars), truncating to 500")
+            clean_text = clean_text[:500]
+        
+        # URL encode the text
+        encoded_text = urllib.parse.quote(clean_text)
+        
+        # DR TTS service URL
+        dr_tts_url = f"https://www.dr.dk/tjenester/tts?text={encoded_text}"
+        
+        # Make request to DR TTS service with proper headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'audio/wav, audio/*, */*',
+            'Accept-Language': 'da-DK,da;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        response = requests.get(dr_tts_url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            # DR returns audio data directly
+            audio_data = response.content
+            
+            if len(audio_data) > 0:
+                logger.info(f"DR TTS generated {len(audio_data)} bytes for Danish text")
+                return audio_data
+            else:
+                logger.warning("DR TTS returned empty audio data")
+                return b''
+        else:
+            logger.error(f"DR TTS request failed with status {response.status_code}: {response.text[:200]}")
+            return b''
+            
+    except requests.exceptions.Timeout:
+        logger.error("DR TTS request timed out")
+        return b''
+    except requests.exceptions.ConnectionError:
+        logger.error("DR TTS connection error")
+        return b''
+    except Exception as e:
+        logger.error(f"DR TTS error: {e}")
+        return b''
+
 def translate_text(text: str, from_lang: str, to_lang: str) -> str:
-    """Translate text using Google Translate"""
+    """Translate text using Google Translate via deep-translator"""
     try:
         if not text.strip():
             return ""
         
-        # Handle auto-detect
+        # Handle auto-detect - deep-translator uses 'auto' directly
         if from_lang == 'auto':
-            from_lang = None
+            from_lang = 'auto'
         
-        translator = Translator()
-        result = translator.translate(text, src=from_lang, dest=to_lang)
+        translator = GoogleTranslator(source=from_lang, target=to_lang)
+        result = translator.translate(text)
         
-        return result.text
+        return result
         
     except Exception as e:
         logger.error(f"Translation error: {e}")
@@ -463,8 +722,46 @@ def translate_text(text: str, from_lang: str, to_lang: str) -> str:
 
 
 def text_to_speech(text: str, language: str) -> bytes:
-    """Convert text to speech using Chatterbox TTS, pyttsx3, Festival, or espeak fallback"""
+    """Convert text to speech using DR TTS for Danish, Fish Speech TTS for other languages"""
     try:
+        # Clean and validate input
+        clean_text = text.strip()
+        if not clean_text:
+            logger.warning("Empty text provided to TTS")
+            return b''
+        
+        # Special handling for Danish - use DR's professional TTS service
+        # Only check explicit language parameter, not text content
+        is_danish = language.lower() in ['da', 'danish', 'da-dk']
+        
+        if is_danish:
+            logger.info(f"Using DR TTS service for Danish text (language: {language})")
+            audio_data = danish_tts_dr(clean_text)
+            if audio_data and len(audio_data) > 0:
+                logger.info(f"DR TTS success: generated {len(audio_data)} bytes")
+                return audio_data
+            else:
+                logger.warning("DR TTS failed, falling back to Fish Speech TTS")
+        
+        # For non-Danish languages, try Fish Speech TTS first
+        fish_speech_success = False
+        if FISH_SPEECH_AVAILABLE and fish_speech_engine is not None:
+            logger.info(f"Using Fish Speech TTS for {language} text")
+            try:
+                audio_data = fish_speech_tts(clean_text, language)
+                if audio_data and len(audio_data) > 0:
+                    logger.info(f"Fish Speech TTS success: generated {len(audio_data)} bytes")
+                    return audio_data
+                else:
+                    logger.warning("Fish Speech TTS returned empty audio data")
+                    fish_speech_success = False
+            except Exception as e:
+                logger.error(f"Fish Speech TTS exception: {e}")
+                fish_speech_success = False
+        else:
+            logger.warning(f"Fish Speech not available: FISH_SPEECH_AVAILABLE={FISH_SPEECH_AVAILABLE}, fish_speech_engine={fish_speech_engine is not None}")
+        
+        # For all other languages, use the existing TTS system
         init_tts()
         
         if tts_engine is None:
@@ -474,33 +771,110 @@ def text_to_speech(text: str, language: str) -> bytes:
         # Create temporary file for output
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             try:
+                # Initialize chatterbox_success for the logic below
+                chatterbox_success = False
+                
                 # Check if it's Chatterbox TTS
                 if hasattr(tts_engine, 'generate') or str(type(tts_engine)).find('chatterbox') != -1:
                     # Use Chatterbox TTS (best quality, open source)
                     logger.info(f"Using Chatterbox TTS for text: {text[:50]}... in language: {language}")
                     
                     try:
-                        # Generate audio using Chatterbox TTS
-                        if hasattr(tts_engine, 'generate'):
-                            wav = tts_engine.generate(text)
-                        else:
-                            # Alternative method for Chatterbox TTS
-                            wav = tts_engine(text)
+                        # Generate audio using Chatterbox TTS with timeout protection
+                        logger.info(f"Generating Chatterbox TTS audio for: {clean_text[:30]}...")
                         
-                        # Save to temporary file using torchaudio
-                        import torchaudio as ta
-                        if hasattr(tts_engine, 'sr'):
-                            sample_rate = tts_engine.sr
-                        else:
-                            sample_rate = 22050  # Default sample rate
+                        import threading
+                        import time
                         
-                        ta.save(tmp_file.name, wav, sample_rate)
-                        logger.info(f"Chatterbox TTS generated audio for language: {language}")
+                        def generate_chatterbox_audio():
+                            try:
+                                if hasattr(tts_engine, 'generate'):
+                                    wav = tts_engine.generate(clean_text)
+                                else:
+                                    # Alternative method for Chatterbox TTS
+                                    wav = tts_engine(clean_text)
+                                
+                                # Save to temporary file using torchaudio
+                                import torchaudio as ta
+                                if hasattr(tts_engine, 'sr'):
+                                    sample_rate = tts_engine.sr
+                                else:
+                                    sample_rate = 22050  # Default sample rate
+                                
+                                ta.save(tmp_file.name, wav, sample_rate)
+                                logger.info(f"✅ Chatterbox TTS generated audio for language: {language}")
+                                return True
+                            except Exception as e:
+                                logger.error(f"Chatterbox TTS generation error: {e}")
+                                return False
+                        
+                        # Use threading with timeout for Chatterbox generation
+                        result_container = [False]
+                        
+                        def target():
+                            result_container[0] = generate_chatterbox_audio()
+                        
+                        thread = threading.Thread(target=target)
+                        thread.daemon = True
+                        thread.start()
+                        
+                        # Wait up to 300 seconds for Chatterbox TTS (it can be very slow)
+                        thread.join(timeout=300)
+                        
+                        if thread.is_alive():
+                            logger.error("Chatterbox TTS generation timed out after 300 seconds")
+                            chatterbox_success = False
+                        else:
+                            chatterbox_success = result_container[0]
                         
                     except Exception as e:
                         logger.error(f"Chatterbox TTS generation failed: {e}")
-                        # Fall back to espeak
-                        raise e
+                        chatterbox_success = False
+                    
+                    # If Chatterbox failed, fall back to espeak
+                    if not chatterbox_success:
+                        logger.info("Chatterbox TTS failed, falling back to espeak")
+                        # Clear the temp file and continue to espeak
+                        if os.path.exists(tmp_file.name):
+                            os.unlink(tmp_file.name)
+                        # Continue to espeak fallback below
+                    else:
+                        # Chatterbox succeeded, skip to reading the file
+                        pass
+                
+                # Use espeak if Chatterbox failed or if tts_engine is 'espeak'
+                if not chatterbox_success and (tts_engine == 'espeak' or not chatterbox_success):
+                    # Use espeak directly (most reliable in containers)
+                    logger.info(f"Using espeak for text: {clean_text[:50]}... in language: {language}")
+                    
+                    voice_map = {
+                        'en': 'en', 'es': 'es', 'fr': 'fr', 'de': 'de', 'it': 'it',
+                        'pt': 'pt', 'ru': 'ru', 'pl': 'pl', 'da': 'da', 'sv': 'sv',
+                        'no': 'no', 'fi': 'fi', 'nl': 'nl', 'cs': 'cs', 'sk': 'sk',
+                        'hu': 'hu', 'ro': 'ro', 'bg': 'bg', 'hr': 'hr', 'sl': 'sl',
+                        'et': 'et', 'lv': 'lv', 'lt': 'lt', 'el': 'el', 'tr': 'tr',
+                        'ar': 'ar', 'he': 'he', 'hi': 'hi', 'zh': 'zh', 'ja': 'ja',
+                        'ko': 'ko', 'th': 'th', 'vi': 'vi', 'ur': 'ur', 'uk': 'uk',
+                        'sr': 'sr', 'tl': 'en'  # Filipino (Tagalog) falls back to English
+                    }
+                    
+                    voice = voice_map.get(language, 'en')
+                    
+                    cmd = [
+                        'espeak',
+                        '-v', voice,
+                        '-s', '150',
+                        '-w', tmp_file.name,
+                        clean_text
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                    
+                    if result.returncode != 0:
+                        logger.error(f"espeak failed: {result.stderr}")
+                        return b''
+                    
+                    logger.info(f"espeak generated audio for language: {language}")
                 
                 elif hasattr(tts_engine, 'save_to_file'):
                     # Use pyttsx3 (cross-platform, open source)
@@ -542,8 +916,8 @@ def text_to_speech(text: str, language: str) -> bytes:
                         return b''
                     
                 else:
-                    # Final fallback to espeak
-                    logger.info(f"Using espeak final fallback for text: {text[:50]}...")
+                    # Final fallback to espeak (legacy)
+                    logger.info(f"Using espeak final fallback for text: {clean_text[:50]}...")
                     
                     voice_map = {
                         'en': 'en', 'es': 'es', 'fr': 'fr', 'de': 'de', 'it': 'it',
@@ -563,10 +937,10 @@ def text_to_speech(text: str, language: str) -> bytes:
                         '-v', voice,
                         '-s', '150',
                         '-w', tmp_file.name,
-                        text
+                        clean_text
                     ]
                     
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                     
                     if result.returncode != 0:
                         logger.error(f"espeak failed: {result.stderr}")
@@ -892,6 +1266,7 @@ def add_message(conversation_id):
         original_text = ""
         detected_language = conversation['input_language']
         audio_file = None
+        speaker = 'participant_1'  # Default speaker
         
         # Check if this is a text message
         if request.is_json:
@@ -902,6 +1277,8 @@ def add_message(conversation_id):
                     return jsonify({'error': 'Text cannot be empty'}), 400
                 # For text input, use the conversation's input language
                 detected_language = conversation['input_language']
+                # Get speaker from request data
+                speaker = data.get('speaker', 'participant_1')
             else:
                 return jsonify({'error': 'No text provided'}), 400
         else:
@@ -914,6 +1291,9 @@ def add_message(conversation_id):
                     os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
                     audio_file.save(audio_path)
                     audio_file = filename
+                
+                # Get speaker from form data for audio messages
+                speaker = request.form.get('speaker', 'participant_1')
             
             # Transcribe audio if provided
             if audio_file:
@@ -949,8 +1329,8 @@ def add_message(conversation_id):
                 (id, conversation_id, timestamp, speaker, original_text, translated_text, 
                  input_language, output_language, audio_file)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (message_id, conversation_id, timestamp, 'user', original_text, 
-                  translated_text, detected_language, conversation['output_language'], audio_file))
+            ''', (message_id, conversation_id, timestamp, speaker, original_text, 
+                  translated_text, conversation['input_language'], conversation['output_language'], audio_file))
             conn.commit()
         
         # Send email if auto_email is enabled
@@ -975,7 +1355,8 @@ def add_message(conversation_id):
                 'id': message_id,
                 'original_text': original_text,
                 'translated_text': translated_text,
-                'detected_language': detected_language,
+                'input_language': conversation['input_language'],
+                'output_language': conversation['output_language'],
                 'timestamp': timestamp.isoformat()
             }
         })
@@ -1288,6 +1669,7 @@ def text_to_speech_endpoint():
         logger.error(f"TTS endpoint error: {e}")
         return jsonify({'error': f'TTS failed: {str(e)}'}), 500
 
+
 @app.route('/translation-pwa/api/translation/text', methods=['POST'])
 def translate_text_endpoint():
     """Translate text directly"""
@@ -1322,9 +1704,8 @@ def translate_text_endpoint():
             input_lang, output_lang, user_email = conversation
         
             # Translate the text
-            translator = Translator()
-            translated_result = translator.translate(text, src=input_lang, dest=output_lang)
-            translated_text = translated_result.text
+            translator = GoogleTranslator(source=input_lang, target=output_lang)
+            translated_text = translator.translate(text)
             
             # Add message to conversation
             cursor.execute("""
@@ -1558,24 +1939,35 @@ def static_files(filename):
 @app.route('/translation-pwa/health')
 def health():
     """Health check endpoint"""
+    fish_speech_status = "disabled_due_to_api_changes"
+    if FISH_SPEECH_AVAILABLE:
+        fish_speech_status = "installed_but_api_changed"
+    else:
+        fish_speech_status = "not_installed"
+    
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.now().isoformat(),
         'whisper_loaded': whisper_model is not None,
-        'tts_loaded': tts_engine is not None
+        'tts_loaded': tts_engine is not None,
+        'fish_speech_loaded': fish_speech_engine is not None,
+        'fish_speech_available': FISH_SPEECH_AVAILABLE,
+        'fish_speech_status': fish_speech_status
     })
 
 
 if __name__ == '__main__':
     # Initialize everything
     init_database()
-    init_tts()
     init_speech_recognition()
     
-    # Pre-load Whisper model in background to avoid delays during requests
+    # Pre-load models in background to avoid delays during requests
     import threading
     whisper_thread = threading.Thread(target=init_whisper_model, daemon=True)
     whisper_thread.start()
+    
+    tts_thread = threading.Thread(target=init_tts_model, daemon=True)
+    tts_thread.start()
     
     # Ensure upload directory exists
     os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)

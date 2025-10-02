@@ -5,12 +5,13 @@ services:
     build: .
     container_name: translation-pwa
     ports:
-      - "8000:8000"
+      - "8002:8000"
     volumes:
       - ./database:/app/database
       - ./backend/uploads:/app/backend/uploads
       - ./static:/app/static
       - ./templates:/app/templates
+      - ./fish_speech_models:/app/fish_speech_models
     environment:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
       - SMTP_SERVER=${SMTP_SERVER:-localhost}
@@ -18,13 +19,13 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - FROM_EMAIL=${FROM_EMAIL:-noreply@ballerup.dk}
-      - CUDA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=""
+      - TORCH_DEVICE=cpu
+      - FORCE_DEVICE=cpu
       - COQUI_TTS_LICENSE_ACCEPTED=true
-      - CUDA_DEVICE_ORDER=PCI_BUS_ID
-      - PYTORCH_NVML_BASED_CUDA_CHECK=1
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512
-      - CUDA_LAUNCH_BLOCKING=0
-      - BNB_CUDA_VERSION=""
+      - HF_HOME=/tmp/huggingface_cache
+      - TRANSFORMERS_CACHE=/tmp/transformers_cache
+      - HF_DATASETS_CACHE=/tmp/datasets_cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/translation-pwa/health"]
@@ -35,10 +36,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
-        reservations:
           memory: 4G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+        reservations:
+          memory: 2G

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Translation PWA Startup Script for Podman with GPU Support
-# This script starts the Translation PWA using Podman with GPU acceleration
+# Translation PWA Restart Script with No Cache
+# This script stops, removes, rebuilds with no cache, and restarts the Translation PWA
 
-echo "🌐 Starting Translation PWA with Podman and GPU support..."
+echo "🔄 Restarting Translation PWA with no cache..."
 echo "=================================================="
 
 # Check if we're in the right directory
@@ -22,19 +22,31 @@ echo "✅ Podman found"
 echo "📁 Working directory: $(pwd)"
 echo ""
 
-# Function to stop existing container
-stop_existing_container() {
+# Function to stop and remove existing container
+stop_and_remove_container() {
     if podman ps -q --filter "name=translation-pwa" | grep -q .; then
         echo "🛑 Stopping existing translation-pwa container..."
         podman stop translation-pwa
+    fi
+    
+    if podman ps -aq --filter "name=translation-pwa" | grep -q .; then
+        echo "🗑️ Removing existing translation-pwa container..."
         podman rm translation-pwa
     fi
 }
 
-# Function to build and start container
-start_container() {
-    echo "🔨 Building Translation PWA container..."
-    podman build -t translation-pwa:latest .
+# Function to remove existing image
+remove_existing_image() {
+    if podman images -q translation-pwa:latest | grep -q .; then
+        echo "🗑️ Removing existing translation-pwa image..."
+        podman rmi translation-pwa:latest
+    fi
+}
+
+# Function to build with no cache and start container
+rebuild_and_start() {
+    echo "🔨 Building Translation PWA container with no cache..."
+    podman build --no-cache -t translation-pwa:latest .
     
     if [ $? -ne 0 ]; then
         echo "❌ Error: Failed to build container"
@@ -76,7 +88,7 @@ start_container() {
 # Function to show status
 show_status() {
     echo ""
-    echo "✅ Translation PWA started successfully with CPU-optimized TTS!"
+    echo "✅ Translation PWA restarted successfully with no cache!"
     echo ""
     echo "🌐 Local endpoints:"
     echo "   - Main app: http://localhost:8002/translation-pwa"
@@ -100,8 +112,9 @@ show_status() {
 }
 
 # Main execution
-stop_existing_container
-start_container
+stop_and_remove_container
+remove_existing_image
+rebuild_and_start
 show_status
 
 # Follow logs if requested

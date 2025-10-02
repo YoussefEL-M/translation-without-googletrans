@@ -11,8 +11,10 @@ ffmpeg-python==0.2.0
 werkzeug==2.3.7
 python-socketio==5.9.0
 eventlet==0.33.3
-googletrans==4.0.0rc1
-pyttsx3==2.90  # Cross-platform TTS with better quality
+# Translation - using deep-translator instead of googletrans to avoid conflicts
+deep-translator>=1.11.0
+# Fish Speech TTS - high-quality neural TTS
+fish-speech>=0.1.0
 transformers>=4.21.0
 accelerate>=0.20.0
 datasets>=2.0.0
