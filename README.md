@@ -294,6 +294,143 @@ Monitor TTS engine status via `/translation-pwa/health` endpoint:
 }
 ```
 
+## 📱 Progressive Web App (PWA) Installation
+
+The Translation PWA is designed to work seamlessly across all devices and can be installed as a native app on mobile phones, tablets, and desktop computers.
+
+### 🚀 How to Install the App
+
+#### **Automatic Installation (Recommended)**
+1. **Visit the app** in your mobile browser: `http://localhost:8000/translation-pwa`
+2. **Look for the install button** "📱 Install App" in the top bar
+3. **Tap the button** to trigger the browser's native install prompt
+4. **Follow the prompts** to add the app to your home screen
+
+#### **Manual Installation Methods**
+
+##### **iPhone/iPad (Safari)**
+1. Open the app in Safari
+2. Tap the **Share button** (📤) at the bottom of the screen
+3. Scroll down and tap **"Add to Home Screen"**
+4. Tap **"Add"** to confirm
+5. The app will appear on your home screen with a custom icon
+
+##### **Android (Chrome/Edge)**
+1. Open the app in Chrome or Edge
+2. Tap the **menu button** (⋮) in the browser
+3. Select **"Add to Home screen"** or **"Install app"**
+4. Tap **"Add"** or **"Install"** to confirm
+5. The app will be added to your home screen
+
+##### **Desktop (Chrome/Edge/Firefox)**
+1. Open the app in a supported browser
+2. Look for the **install icon** (⬇️) in the address bar
+3. Click the install icon and select **"Install"**
+4. The app will be added to your desktop and app menu
+5. You can launch it like any other desktop application
+
+### 🎯 PWA Features
+
+#### **App-like Experience**
+- **Standalone Mode**: Runs without browser UI (no address bar, tabs, etc.)
+- **Custom Icon**: Professional app icon on home screen/desktop
+- **App Name**: "Translation by Semaphor" in app lists
+- **Splash Screen**: Custom loading screen when opening
+
+#### **Offline Capabilities**
+- **Service Worker**: Caches essential files for offline access
+- **Cached Resources**: App shell loads instantly even without internet
+- **Background Sync**: Queues actions when offline, syncs when online
+- **Smart Caching**: Automatically updates cached content
+
+#### **Mobile Optimizations**
+- **Touch-Friendly**: Large buttons and touch targets
+- **Responsive Design**: Adapts to all screen sizes
+- **Fast Loading**: Optimized for mobile networks
+- **Battery Efficient**: Minimal background processing
+
+#### **Desktop Features**
+- **Window Management**: Resizable, movable windows
+- **Keyboard Shortcuts**: Full keyboard navigation support
+- **Multi-window**: Can open multiple instances
+- **System Integration**: Appears in taskbar/dock
+
+### 🔧 PWA Technical Details
+
+#### **Manifest Configuration**
+```json
+{
+  "name": "Translation by Semaphor",
+  "short_name": "Semaphor Translate",
+  "description": "Real-time translation service",
+  "start_url": "/translation-pwa",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/translation-pwa/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/translation-pwa/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+#### **Service Worker Features**
+- **Cache Strategy**: Cache-first for static assets, network-first for API calls
+- **Background Sync**: Handles offline translation requests
+- **Push Notifications**: Ready for future notification features
+- **Update Management**: Automatic app updates
+
+#### **Installation Detection**
+- **beforeinstallprompt**: Captures browser install prompts
+- **appinstalled**: Detects successful installations
+- **display-mode**: Detects if running in standalone mode
+- **Smart UI**: Shows/hides install button based on installation status
+
+### 📊 PWA Benefits
+
+#### **For Users**
+- **Fast Access**: One tap to open from home screen
+- **Offline Use**: Works without internet connection
+- **Native Feel**: Behaves like a native mobile app
+- **No App Store**: Install directly from browser
+- **Always Updated**: Automatic updates without user intervention
+
+#### **For Administrators**
+- **Easy Deployment**: No app store approval process
+- **Instant Updates**: Deploy updates immediately
+- **Cross-Platform**: Single codebase for all devices
+- **Analytics**: Full web analytics capabilities
+- **Cost Effective**: No app store fees or restrictions
+
+### 🛠️ PWA Development
+
+#### **Testing PWA Features**
+```bash
+# Test PWA installation
+curl -I http://localhost:8000/translation-pwa/manifest.json
+
+# Test service worker
+curl -I http://localhost:8000/translation-pwa/sw.js
+
+# Check PWA score
+# Use Chrome DevTools > Lighthouse > Progressive Web App
+```
+
+#### **Debugging PWA Issues**
+1. **Chrome DevTools**: Application tab > Service Workers
+2. **Manifest**: Check manifest.json is valid
+3. **HTTPS**: PWA requires HTTPS in production
+4. **Service Worker**: Verify registration and caching
+5. **Install Prompt**: Check beforeinstallprompt event
+
 ## 📱 Usage
 
 ### For Users
@@ -441,12 +578,13 @@ All API endpoints are prefixed with `/translation-pwa/api/`
 - **librosa** - Audio analysis
 
 ### Frontend Technologies
-- **Progressive Web App (PWA)** - Offline capabilities
-- **Service Worker** - Background processing
+- **Progressive Web App (PWA)** - Offline capabilities and native app installation
+- **Service Worker** - Background processing and caching
 - **WebSocket** - Real-time communication
 - **MediaRecorder API** - Audio recording
 - **Modern CSS** - Responsive design with glassmorphism
 - **JavaScript ES6+** - Client-side functionality
+- **PWA Installation** - One-click app installation for mobile and desktop
 
 ### Development Tools
 - **Nix** - Reproducible development environment

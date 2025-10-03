@@ -187,6 +187,29 @@
             font-weight: 600;
         }
         
+        .pwa-install-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+            display: none;
+        }
+        
+        .pwa-install-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .pwa-install-btn.show {
+            display: inline-block;
+        }
+        
         .logout-btn {
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
@@ -909,6 +932,12 @@
                 min-width: 0;
             }
             
+            .pwa-install-btn {
+                font-size: 12px;
+                padding: 6px 10px;
+                margin-left: 5px;
+            }
+            
             .logout-btn {
                 font-size: 0.8rem;
                 padding: 6px 12px;
@@ -987,13 +1016,14 @@
             }
             
             .language-selector {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr auto 1fr;
                 gap: 10px;
+                align-items: end;
             }
             
             .swap-btn {
-                align-self: center;
-                margin: 10px auto;
+                align-self: end;
+                margin-bottom: 8px;
             }
             
             /* Messages Mobile */
@@ -1136,9 +1166,10 @@
         
         .language-selector {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr auto 1fr;
             gap: 15px;
             margin-bottom: 15px;
+            align-items: end;
         }
         
         .form-group {
@@ -1178,6 +1209,11 @@
             align-self: end;
             margin-bottom: 8px;
             transition: all 0.3s ease;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .swap-btn:hover {
@@ -1231,7 +1267,10 @@
         <div class="top-bar">
             <button class="menu-toggle" onclick="openSideMenu()">☰</button>
             <div class="app-title">Translation by Semaphor</div>
-            <button class="logout-btn" onclick="logout()">Logout</button>
+            <div style="display: flex; align-items: center;">
+                <button class="pwa-install-btn" id="pwaInstallBtn" onclick="installPWA()">📱 Install App</button>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
         </div>
 
         <!-- Main Content -->
@@ -1281,14 +1320,13 @@
                                 <option value="auto">Auto-detect</option>
                             </select>
                         </div>
+                        <button class="swap-btn" onclick="swapLanguages()" title="Swap languages">⇄</button>
                         <div class="form-group">
                             <label for="outputLanguage">Output Language</label>
                             <select id="outputLanguage">
                             </select>
                         </div>
                     </div>
-                    <button class="swap-btn" onclick="swapLanguages()" title="Swap languages">⇄</button>
-                    <button class="btn btn-secondary" onclick="applyLanguageChangeFromSettings()" style="width: auto; margin-top: 10px;">Apply Languages</button>
                 </div>
 
                 <div class="conversation-history" id="conversationHistory">
@@ -3075,59 +3113,6 @@
             }
         }
 
-        async function applyLanguageChangeFromSettings() {
-            if (!currentConversationId) return;
-            
-            const inputLang = document.getElementById('inputLanguage').value;
-            const outputLang = document.getElementById('outputLanguage').value;
-            
-            if (!outputLang) {
-                showError('Please select an output language');
-                return;
-            }
-            
-            try {
-                showLoading(true);
-                
-                const response = await fetch(`/translation-pwa/api/conversations/${currentConversationId}/languages`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        input_language: inputLang,
-                        output_language: outputLang
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showSuccess(`Languages updated! Now translating from ${inputLang} to ${outputLang}`);
-                    
-                    // Update modal language controls to match
-                    document.getElementById('modalInputLang').value = inputLang;
-                    document.getElementById('modalOutputLang').value = outputLang;
-                    
-                    // Update stored conversation data
-                    if (currentConversation) {
-                        currentConversation.input_language = inputLang;
-                        currentConversation.output_language = outputLang;
-                    }
-                    
-                    // Update language display
-                    document.getElementById('languageDisplay').textContent = `${inputLang} → ${outputLang}`;
-                } else {
-                    showError(data.error || 'Failed to update language settings');
-                    // Don't reload conversation on error - this would revert the UI
-                }
-            } catch (error) {
-                console.error('Apply language change error:', error);
-                showError('Failed to update language settings');
-            } finally {
-                showLoading(false);
-            }
-        }
         
         function showAuthSection() {
             document.getElementById('authSection').classList.add('active');
@@ -3200,6 +3185,129 @@
                     });
             });
         }
+        
+        // PWA Installation functionality
+        let deferredPrompt;
+        const installBtn = document.getElementById('pwaInstallBtn');
+        
+        // Listen for the beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('PWA install prompt available');
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            deferredPrompt = e;
+            // Show the install button
+            installBtn.classList.add('show');
+        });
+        
+        // Handle the install button click
+        async function installPWA() {
+            if (deferredPrompt) {
+                // Show the install prompt
+                deferredPrompt.prompt();
+                // Wait for the user to respond to the prompt
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to the install prompt: ${outcome}`);
+                // Clear the deferredPrompt
+                deferredPrompt = null;
+                // Hide the install button
+                installBtn.classList.remove('show');
+            } else {
+                // Fallback for browsers that don't support the install prompt
+                showPWAInstructions();
+            }
+        }
+        
+        // Listen for the appinstalled event
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('PWA was installed');
+            installBtn.classList.remove('show');
+            showSuccess('App installed successfully! You can now access it from your home screen.');
+        });
+        
+        // Show PWA installation instructions for different platforms
+        function showPWAInstructions() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isAndroid = /Android/.test(navigator.userAgent);
+            
+            let instructions = '';
+            
+            if (isIOS) {
+                instructions = `
+                    <h3>📱 Install on iPhone/iPad</h3>
+                    <ol>
+                        <li>Tap the <strong>Share</strong> button (📤) at the bottom of Safari</li>
+                        <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+                        <li>Tap <strong>"Add"</strong> to confirm</li>
+                        <li>The app will appear on your home screen!</li>
+                    </ol>
+                `;
+            } else if (isAndroid) {
+                instructions = `
+                    <h3>📱 Install on Android</h3>
+                    <ol>
+                        <li>Tap the <strong>menu</strong> (⋮) in your browser</li>
+                        <li>Select <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></li>
+                        <li>Tap <strong>"Add"</strong> or <strong>"Install"</strong> to confirm</li>
+                        <li>The app will appear on your home screen!</li>
+                    </ol>
+                `;
+            } else {
+                instructions = `
+                    <h3>💻 Install on Desktop</h3>
+                    <ol>
+                        <li>Look for the <strong>install icon</strong> (⬇️) in your browser's address bar</li>
+                        <li>Click it and select <strong>"Install"</strong></li>
+                        <li>The app will be added to your desktop and app menu</li>
+                    </ol>
+                `;
+            }
+            
+            // Create a modal with instructions
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            
+            modal.innerHTML = `
+                <div style="
+                    background: white;
+                    padding: 30px;
+                    border-radius: 20px;
+                    max-width: 400px;
+                    margin: 20px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                ">
+                    ${instructions}
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                                style="background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer;">
+                            Got it!
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Check if the app is already installed
+        window.addEventListener('load', () => {
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                console.log('App is running in standalone mode');
+                installBtn.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
