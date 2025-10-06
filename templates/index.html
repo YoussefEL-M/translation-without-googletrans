@@ -198,7 +198,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             margin-left: 10px;
-            display: none;
+            display: inline-block;
         }
         
         .pwa-install-btn:hover {
@@ -3189,6 +3189,7 @@
         // PWA Installation functionality
         let deferredPrompt;
         const installBtn = document.getElementById('pwaInstallBtn');
+        let installPromptAvailable = false;
         
         // Listen for the beforeinstallprompt event
         window.addEventListener('beforeinstallprompt', (e) => {
@@ -3197,22 +3198,35 @@
             e.preventDefault();
             // Stash the event so it can be triggered later
             deferredPrompt = e;
-            // Show the install button
-            installBtn.classList.add('show');
+            installPromptAvailable = true;
+            // Update button text to indicate it's ready
+            installBtn.textContent = '📱 Install App';
+            installBtn.style.background = 'rgba(34, 197, 94, 0.8)'; // Green background
         });
         
         // Handle the install button click
         async function installPWA() {
-            if (deferredPrompt) {
-                // Show the install prompt
-                deferredPrompt.prompt();
-                // Wait for the user to respond to the prompt
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response to the install prompt: ${outcome}`);
-                // Clear the deferredPrompt
-                deferredPrompt = null;
-                // Hide the install button
-                installBtn.classList.remove('show');
+            if (deferredPrompt && installPromptAvailable) {
+                try {
+                    // Show the install prompt
+                    deferredPrompt.prompt();
+                    // Wait for the user to respond to the prompt
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`User response to the install prompt: ${outcome}`);
+                    
+                    if (outcome === 'accepted') {
+                        showSuccess('App installed successfully! You can now access it from your home screen.');
+                    }
+                    
+                    // Clear the deferredPrompt
+                    deferredPrompt = null;
+                    installPromptAvailable = false;
+                    // Hide the install button
+                    installBtn.style.display = 'none';
+                } catch (error) {
+                    console.error('Error during installation:', error);
+                    showPWAInstructions();
+                }
             } else {
                 // Fallback for browsers that don't support the install prompt
                 showPWAInstructions();
@@ -3306,6 +3320,11 @@
             if (window.matchMedia('(display-mode: standalone)').matches) {
                 console.log('App is running in standalone mode');
                 installBtn.style.display = 'none';
+            } else {
+                // Show install button with fallback instructions
+                installBtn.textContent = '📱 Install App';
+                installBtn.style.background = 'rgba(255, 255, 255, 0.2)';
+                installBtn.style.display = 'inline-block';
             }
         });
     </script>
