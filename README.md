@@ -315,12 +315,16 @@ The Translation PWA is designed to work seamlessly across all devices and can be
 4. Tap **"Add"** to confirm
 5. The app will appear on your home screen with a custom icon
 
-##### **Android (Chrome/Edge)**
-1. Open the app in Chrome or Edge
-2. Tap the **menu button** (⋮) in the browser
-3. Select **"Add to Home screen"** or **"Install app"**
-4. Tap **"Add"** or **"Install"** to confirm
-5. The app will be added to your home screen
+##### **Android (Chrome/Edge/Samsung Internet)**
+1. **Chrome/Edge**: Open the app in Chrome or Edge
+   - Look for **install icon** (⬇️) in address bar, OR
+   - Tap **menu** (⋮) → **"Add to Home screen"** or **"Install app"**
+2. **Samsung Internet**: Open the app in Samsung Internet
+   - Tap **menu** (⋮) → **"Add page to"** → **"Home screen"**
+3. Tap **"Add"** or **"Install"** to confirm
+4. The app will be added to your home screen
+
+**Note**: Samsung Galaxy users may need to use Chrome for full PWA features. Samsung Internet has limited PWA support.
 
 ##### **Desktop (Chrome/Edge/Firefox)**
 1. Open the app in a supported browser
@@ -430,6 +434,21 @@ curl -I http://localhost:8000/translation-pwa/sw.js
 3. **HTTPS**: PWA requires HTTPS in production
 4. **Service Worker**: Verify registration and caching
 5. **Install Prompt**: Check beforeinstallprompt event
+
+#### **Samsung Galaxy Troubleshooting**
+**If you can't find install options on Samsung Galaxy:**
+
+1. **Use Chrome Browser**: Samsung Internet has limited PWA support
+2. **Check Address Bar**: Look for install icon (⬇️) or "+" symbol
+3. **Try Menu Method**: Chrome menu (⋮) → "Add to Home screen"
+4. **Refresh Page**: Sometimes the install prompt appears after refresh
+5. **Check Android Version**: PWA support varies by Android version
+6. **Disable Ad Blockers**: Some ad blockers prevent PWA installation
+
+**Common Samsung Issues:**
+- **Samsung Internet**: Limited PWA features, use Chrome instead
+- **Android 7-8**: May need Chrome 68+ for full PWA support
+- **Custom ROMs**: Some custom Android versions have PWA limitations
 
 ## 📱 Usage
 
