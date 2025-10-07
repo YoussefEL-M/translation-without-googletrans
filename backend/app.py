@@ -584,7 +584,7 @@ def coqui_tts(text: str, language: str) -> bytes:
             'ko': 'ko', 'korean': 'ko',
             
             # Mapped to closest supported language (XTTS-v2 will pronounce correctly)
-            'da': 'en', 'danish': 'en', 'da-dk': 'en',  # Danish → English voice
+            'da': 'de', 'danish': 'de', 'da-dk': 'de',  # Danish → German (closer Germanic language)
             'uk': 'ru', 'ukrainian': 'ru',  # Ukrainian → Russian (similar Slavic)
             'sr': 'ru', 'serbian': 'ru',  # Serbian → Russian (similar Slavic)
             'hi': 'en', 'hindi': 'en', 'indian': 'en',  # Hindi → English
@@ -1769,7 +1769,9 @@ def static_files(filename):
     """Serve static files"""
     file_path = os.path.join('/app/static', filename)
     if not os.path.exists(file_path):
-        logger.warning(f"Static file not found: {filename}")
+        # Suppress warnings for source map files (used for browser debugging)
+        if not filename.endswith('.map'):
+            logger.warning(f"Static file not found: {filename}")
         return "File not found", 404
     return send_file(file_path)
 
