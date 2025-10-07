@@ -6,12 +6,18 @@ services:
     container_name: translation-pwa
     ports:
       - "8002:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
       - ./database:/app/database
       - ./backend/uploads:/app/backend/uploads
       - ./static:/app/static
       - ./templates:/app/templates
-      - ./fish_speech_models:/app/fish_speech_models
     environment:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
       - SMTP_SERVER=${SMTP_SERVER:-localhost}
@@ -19,10 +25,11 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - FROM_EMAIL=${FROM_EMAIL:-noreply@ballerup.dk}
-      - CUDA_VISIBLE_DEVICES=""
-      - TORCH_DEVICE=cpu
-      - FORCE_DEVICE=cpu
+      - CUDA_VISIBLE_DEVICES=0
+      - TORCH_DEVICE=cuda
+      - FORCE_DEVICE=cuda
       - COQUI_TTS_LICENSE_ACCEPTED=true
+      - TTS_LICENSE_ACCEPTED=true
       - HF_HOME=/tmp/huggingface_cache
       - TRANSFORMERS_CACHE=/tmp/transformers_cache
       - HF_DATASETS_CACHE=/tmp/datasets_cache
@@ -36,6 +43,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 6G  # Enough for YourTTS and other CPU models
         reservations:
-          memory: 2G
+          memory: 4G

@@ -34,37 +34,49 @@ stop_existing_container() {
 # Function to build and start container
 start_container() {
     echo "🔨 Building Translation PWA container..."
-    podman build -t translation-pwa:latest .
+    podman build --format docker -t translation-pwa:latest .
     
     if [ $? -ne 0 ]; then
         echo "❌ Error: Failed to build container"
         exit 1
     fi
     
-    echo "🚀 Starting Translation PWA with CPU-optimized TTS..."
+    echo "🚀 Starting Translation PWA with Coqui XTTS-v2 and GPU support..."
     podman run -d \
         --name translation-pwa \
         --restart unless-stopped \
+        --device /dev/nvidia0:/dev/nvidia0 \
+        --device /dev/nvidiactl:/dev/nvidiactl \
+        --device /dev/nvidia-uvm:/dev/nvidia-uvm \
+        -v /usr/lib/cuda:/usr/lib/cuda:ro \
+        -v /usr/include/cuda:/usr/include/cuda:ro \
+        -v /usr/lib/x86_64-linux-gnu/nvidia/current:/usr/lib/x86_64-linux-gnu/nvidia/current:ro \
         -p 8002:8000 \
         -v ./database:/app/database \
         -v ./backend/uploads:/app/backend/uploads \
         -v ./static:/app/static \
         -v ./templates:/app/templates \
-        -v ./fish_speech_models:/app/fish_speech_models \
+        -v xtts_cache:/app/.cache \
+        -v tts_cache:/app/.cache/tts \
         -e SECRET_KEY=${SECRET_KEY:-your-secret-key-here} \
         -e SMTP_SERVER=${SMTP_SERVER:-localhost} \
         -e SMTP_PORT=${SMTP_PORT:-587} \
         -e SMTP_USERNAME=${SMTP_USERNAME:-} \
         -e SMTP_PASSWORD=${SMTP_PASSWORD:-} \
         -e FROM_EMAIL=${FROM_EMAIL:-noreply@ballerup.dk} \
-        -e CUDA_VISIBLE_DEVICES="" \
-        -e TORCH_DEVICE=cpu \
-        -e FORCE_DEVICE=cpu \
+        -e CUDA_VISIBLE_DEVICES=0 \
+        -e TORCH_DEVICE=cuda \
+        -e FORCE_DEVICE=cuda \
         -e COQUI_TTS_LICENSE_ACCEPTED=true \
+        -e TTS_LICENSE_ACCEPTED=true \
         -e HF_HOME=/tmp/huggingface_cache \
         -e TRANSFORMERS_CACHE=/tmp/transformers_cache \
         -e HF_DATASETS_CACHE=/tmp/datasets_cache \
-        --memory=4g \
+        -e CUDA_DEVICE_ORDER=PCI_BUS_ID \
+        -e PYTORCH_NVML_BASED_CUDA_CHECK=1 \
+        -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512 \
+        -e LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/nvidia/current:/usr/lib/cuda/lib64:/usr/local/cuda/lib64 \
+        --memory=12g \
         translation-pwa:latest
     
     if [ $? -ne 0 ]; then
@@ -76,7 +88,7 @@ start_container() {
 # Function to show status
 show_status() {
     echo ""
-    echo "✅ Translation PWA started successfully with CPU-optimized TTS!"
+    echo "✅ Translation PWA started successfully with Coqui XTTS-v2!"
     echo ""
     echo "🌐 Local endpoints:"
     echo "   - Main app: http://localhost:8002/translation-pwa"
@@ -95,7 +107,7 @@ show_status() {
     echo "   - Stop service: podman stop translation-pwa"
     echo "   - Restart service: podman restart translation-pwa"
     echo "   - Enter container: podman exec -it translation-pwa bash"
-    echo "   - Check TTS: podman exec translation-pwa python3 -c \"import torch; print(f'CUDA: {torch.cuda.is_available()}')\""
+    echo "   - Check TTS: podman exec translation-pwa python3 -c \"from TTS.api import TTS; print('Coqui XTTS-v2: Available')\""
     echo ""
 }
 

@@ -728,6 +728,7 @@
             background: linear-gradient(135deg, #f59e0b, #d97706);
         }
         
+        
         /* Status Messages */
         .status-message {
             position: fixed;
@@ -2730,9 +2731,9 @@
                                 <button class="action-btn secondary" onclick="event.stopPropagation(); downloadConversationHistory('${conv.id}')">
                                     📥 Download
                                 </button>
-                                ${conv.ended ? `<button class="action-btn success" onclick="event.stopPropagation(); continueConversation('${conv.id}')">
+                                <button class="action-btn success" onclick="event.stopPropagation(); continueConversation('${conv.id}')">
                                     🔄 Continue
-                                </button>` : ''}
+                                </button>
                             </div>
                         `;
                         
@@ -2925,9 +2926,9 @@
                             <button onclick="downloadConversationHistory('${conversation.id}')" style="padding: 12px 24px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
                                 📥 Download TXT
                             </button>
-                            ${conversation.ended ? `<button onclick="continueConversation('${conversation.id}'); hideConversationModal();" style="padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            <button onclick="continueConversation('${conversation.id}'); hideConversationModal();" style="padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
                                 🔄 Continue Conversation
-                            </button>` : ''}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -3326,7 +3327,91 @@
                 installBtn.style.background = 'rgba(255, 255, 255, 0.2)';
                 installBtn.style.display = 'inline-block';
             }
+            
+            // Clean up old conversations on app load
+            cleanupOldConversations();
         });
+        
+        // Auto-end conversation when user leaves the app
+        window.addEventListener('beforeunload', () => {
+            if (currentConversationId) {
+                // Use sendBeacon for reliable delivery even when page is unloading
+                navigator.sendBeacon(`/translation-pwa/api/conversations/${currentConversationId}/end`);
+            }
+        });
+        
+        // Auto-end conversation when page becomes hidden (mobile app switching, tab switching)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && currentConversationId) {
+                // End conversation when page becomes hidden
+                endConversationSilently();
+            }
+        });
+        
+        // Auto-end conversation after 30 minutes of inactivity
+        let inactivityTimer;
+        function resetInactivityTimer() {
+            if (inactivityTimer) {
+                clearTimeout(inactivityTimer);
+            }
+            if (currentConversationId) {
+                inactivityTimer = setTimeout(() => {
+                    if (currentConversationId) {
+                        endConversationSilently();
+                    }
+                }, 30 * 60 * 1000); // 30 minutes
+            }
+        }
+        
+        // Reset timer on user activity
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(event => {
+            document.addEventListener(event, resetInactivityTimer, true);
+        });
+        
+        // Silent conversation ending (no UI feedback)
+        async function endConversationSilently() {
+            if (!currentConversationId) return;
+            
+            try {
+                await fetch(`/translation-pwa/api/conversations/${currentConversationId}/end`, {
+                    method: 'POST'
+                });
+                
+                // Clear current conversation
+                currentConversationId = null;
+                currentConversation = null;
+                
+                // Update UI
+                updateConversationUI();
+                
+                // Refresh conversation list
+                await loadConversations();
+                
+                console.log('Conversation ended automatically due to inactivity or app closure');
+            } catch (error) {
+                console.error('Error ending conversation silently:', error);
+            }
+        }
+        
+        // Clean up old conversations that were left active
+        async function cleanupOldConversations() {
+            try {
+                const response = await fetch('/translation-pwa/api/cleanup/end-old-conversations', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.ended_conversations > 0) {
+                        console.log(`Cleaned up ${data.ended_conversations} old conversations`);
+                        // Refresh conversation list to show updated status
+                        await loadConversations();
+                    }
+                }
+            } catch (error) {
+                console.error('Error cleaning up old conversations:', error);
+            }
+        }
     </script>
 </body>
 </html>

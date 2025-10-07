@@ -1,10 +1,8 @@
 flask==2.3.3
 flask-socketio==5.3.6
 flask-cors==4.0.0
-openai-whisper==20231117
+openai-whisper
 pydub==0.25.1
-torch==2.6.0
-torchaudio==2.6.0
 numpy==1.24.3
 SpeechRecognition==3.10.0
 ffmpeg-python==0.2.0
@@ -13,10 +11,13 @@ python-socketio==5.9.0
 eventlet==0.33.3
 # Translation - using deep-translator instead of googletrans to avoid conflicts
 deep-translator>=1.11.0
-# Fish Speech TTS - high-quality neural TTS
-fish-speech>=0.1.0
-transformers>=4.21.0
+# Coqui XTTS-v2 - High-quality multilingual TTS
+TTS>=0.22.0,<0.23.0
+transformers>=4.21.0,<4.40.0
 accelerate>=0.20.0
 datasets>=2.0.0
 librosa>=0.9.0
 soundfile>=0.12.0
+torch>=2.0.0
+torchaudio>=2.0.0
+scipy>=1.9.0

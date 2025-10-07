@@ -33,12 +33,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install core dependencies first
 RUN pip install --no-cache-dir numpy==1.24.3
-RUN pip install --no-cache-dir torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+# Install PyTorch with CUDA support
+RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
-# Install Chatterbox TTS first (before other dependencies to avoid conflicts)
-RUN pip install --no-cache-dir chatterbox-tts
-
-# Install other dependencies
+# Install all Python dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
@@ -53,7 +51,13 @@ ENV FLASK_APP=backend/app.py
 ENV FLASK_ENV=production
 ENV TRANSFORMERS_CACHE=/app/.cache/transformers
 ENV HF_HOME=/app/.cache/huggingface
-ENV CUDA_VISIBLE_DEVICES=""
+ENV TTS_HOME=/app/.cache/tts
+# Enable GPU for XTTS-v2
+ENV CUDA_VISIBLE_DEVICES="0"
+# Coqui TTS License acceptance
+ENV COQUI_TTS_LICENSE_ACCEPTED=true
+ENV TTS_LICENSE_ACCEPTED=true
+ENV TTS_LICENSE_ACCEPTED_CPML=true
 
 # Expose port
 EXPOSE 8000
