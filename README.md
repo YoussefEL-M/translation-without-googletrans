@@ -1,6 +1,6 @@
 # Translation PWA
 
-A comprehensive Progressive Web Application (PWA) for real-time translation services, designed specifically for Ballerup municipality. This application provides voice-to-voice translation capabilities with conversation management, email integration, and administrative features.
+A comprehensive Progressive Web Application (PWA) for real-time translation services, designed specifically for Ballerup emails. This application provides voice-to-voice translation capabilities with conversation management, email integration, and administrative features.
 
 ## 🌟 Features
 
@@ -739,5 +739,3 @@ Test audio recording and transcription:
 ---
 
 **Translation PWA** - Bringing people together through technology 🌍
-
-*Developed for Ballerup Municipality by Semaphor*
