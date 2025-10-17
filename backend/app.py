@@ -31,7 +31,8 @@ from flask_cors import CORS
 import whisper
 import torch
 import numpy as np
-from transformers import pipeline
+import argostranslate.package
+from argostranslate import translate as argos_translate
 from pydub import AudioSegment
 import io
 import ffmpeg
@@ -152,8 +153,6 @@ whisper_model = None
 tts_engine = None
 coqui_tts_engine = None
 recognizer = None
-
-translation_pipelines = {}
 
 @dataclass
 class Conversation:
@@ -445,6 +444,47 @@ def init_speech_recognition():
         recognizer = sr.Recognizer()
         logger.info("Speech recognition initialized")
 
+def ensure_argos_packages():
+    """Ensure Argos Translate packages are installed"""
+    try:
+        # Update package index
+        argostranslate.package.update_package_index()
+        available_packages = argostranslate.package.get_available_packages()
+        
+        # Get installed packages
+        installed_packages = argostranslate.package.get_installed_packages()
+        installed_codes = set()
+        for pkg in installed_packages:
+            installed_codes.add(f"{pkg.from_code}-{pkg.to_code}")
+        
+        # Language pairs we need (excluding Serbian which we'll handle separately)
+        needed_pairs = []
+        for from_lang in Config.SUPPORTED_LANGUAGES.keys():
+            for to_lang in Config.SUPPORTED_LANGUAGES.keys():
+                if from_lang != to_lang and from_lang != 'sr' and to_lang != 'sr':
+                    needed_pairs.append((from_lang, to_lang))
+        
+        # Install missing packages
+        for from_code, to_code in needed_pairs:
+            pair_key = f"{from_code}-{to_code}"
+            if pair_key not in installed_codes:
+                # Find package
+                package_to_install = None
+                for pkg in available_packages:
+                    if pkg.from_code == from_code and pkg.to_code == to_code:
+                        package_to_install = pkg
+                        break
+                
+                if package_to_install:
+                    logger.info(f"Installing Argos package: {from_code} → {to_code}")
+                    argostranslate.package.install_from_path(package_to_install.download())
+                    installed_codes.add(pair_key)
+        
+        logger.info("Argos Translate packages checked and installed")
+        
+    except Exception as e:
+        logger.error(f"Error setting up Argos packages: {e}")
+
 def init_whisper_model():
     """Pre-load Whisper model during startup to avoid delays during requests"""
     global whisper_model
@@ -697,68 +737,58 @@ def coqui_tts(text: str, language: str) -> bytes:
         return b''
 
 
-def get_translation_pipeline(from_lang: str, to_lang: str):
-    """Get or create a Helsinki-NLP translation pipeline (open-source, no external APIs)"""
-    global translation_pipelines
-    
-    # Language code mapping for Helsinki-NLP models
-    lang_map = {
-        'da': 'da', 'en': 'en', 'fr': 'fr', 'es': 'es', 'pt': 'pt',
-        'it': 'it', 'ur': 'ur', 'tr': 'tr', 'sr': 'sr', 'pl': 'pl',
-        'uk': 'uk', 'hi': 'hi', 'tl': 'fil', 'ko': 'ko'
-    }
-    
-    src = lang_map.get(from_lang, from_lang)
-    tgt = lang_map.get(to_lang, to_lang)
-    
-    # If same language, no translation needed
-    if src == tgt:
-        return None
-    
-    # Create cache key
-    cache_key = f"{src}-{tgt}"
-    
-    # Return cached pipeline if exists
-    if cache_key in translation_pipelines:
-        return translation_pipelines[cache_key]
-    
-    try:
-        # Helsinki-NLP model format: opus-mt-{src}-{tgt}
-        model_name = f"Helsinki-NLP/opus-mt-{src}-{tgt}"
-        logger.info(f"Loading Helsinki-NLP model: {model_name}")
-        
-        # Load with GPU if available
-        device = 0 if torch.cuda.is_available() else -1
-        pipeline_obj = pipeline("translation", model=model_name, device=device)
-        
-        translation_pipelines[cache_key] = pipeline_obj
-        logger.info(f"Translation model loaded: {src}→{tgt}")
-        return pipeline_obj
-        
-    except Exception as e:
-        logger.error(f"Failed to load Helsinki-NLP model for {src}→{tgt}: {e}")
-        return None
-
 def translate_text(text: str, from_lang: str, to_lang: str) -> str:
-    """Translate text using Helsinki-NLP (100% open-source, no external APIs)"""
+    """Translate text using Argos Translate (offline) or Google Translate for Serbian."""
     try:
-        if not text.strip():
+        text = text.strip()
+        if not text:
             return ""
-        
-        # Get translation pipeline
-        pipeline_obj = get_translation_pipeline(from_lang, to_lang)
-        
-        if pipeline_obj is None:
-            logger.warning(f"No translation available for {from_lang}→{to_lang}, returning original text")
+
+        # Ensure valid languages
+        if not from_lang or from_lang not in Config.SUPPORTED_LANGUAGES:
+            logger.warning(f"Invalid input language '{from_lang}', defaulting to English.")
+            from_lang = 'en'
+        if not to_lang or to_lang not in Config.SUPPORTED_LANGUAGES:
+            logger.warning(f"Invalid output language '{to_lang}', defaulting to English.")
+            to_lang = 'en'
+
+        # Skip same-language translation
+        if from_lang == to_lang:
             return text
-        
-        # Translate
-        result = pipeline_obj(text, max_length=512)
-        translated = result[0]['translation_text'] if result else text
-        
-        logger.info(f"Translated {from_lang}→{to_lang}: {text[:50]}...")
-        return translated
-        
+        # Serbian handled via Google
+        if from_lang == 'sr' or to_lang == 'sr':
+            try:
+                from deep_translator import GoogleTranslator
+                logger.info(f"Using Google Translate for Serbian: {from_lang} → {to_lang}")
+                return GoogleTranslator(source=from_lang, target=to_lang).translate(text)
+            except Exception as e:
+                logger.error(f"Google Translate failed for Serbian: {e}")
+                return text
+
+        # Try Argos Translate
+        try:
+            from argostranslate import translate as argos_translate
+
+            # Prefer new API (>=1.8.0)
+            if hasattr(argos_translate, "get_translation"):
+                translator = argos_translate.get_translation(from_lang, to_lang)
+                return translator.translate(text)
+
+            # Fallback for old API
+            installed_languages = argos_translate.get_installed_languages()
+            from_lang_obj = next((l for l in installed_languages if l.code == from_lang), None)
+            to_lang_obj = next((l for l in installed_languages if l.code == to_lang), None)
+            if from_lang_obj and to_lang_obj:
+                translator = from_lang_obj.get_translation(to_lang_obj)
+                return translator.translate(text)
+
+            logger.warning(f"No Argos translation found for {from_lang}→{to_lang}, returning original text.")
+            return text
+
+        except Exception as e:
+            logger.error(f"Argos translation error ({from_lang}→{to_lang}): {e}")
+            return text
+
     except Exception as e:
         logger.error(f"Translation error ({from_lang}→{to_lang}): {e}")
         return text
@@ -1097,7 +1127,7 @@ def create_conversation():
             return jsonify({'error': 'Authentication required'}), 401
         
         data = request.get_json()
-        input_lang = data.get('input_language', 'auto')
+        input_lang = data.get('input_language', 'en')
         output_lang = data.get('output_language', 'en')
         auto_email = data.get('auto_email', False)
         
@@ -1382,7 +1412,7 @@ def update_conversation_languages(conversation_id):
             return jsonify({'error': 'Authentication required'}), 401
         
         data = request.get_json()
-        input_lang = data.get('input_language', 'auto')
+        input_lang = data.get('input_language', 'en')
         output_lang = data.get('output_language')
         
         if not output_lang:
@@ -1553,7 +1583,6 @@ def text_to_speech_endpoint():
         logger.error(f"TTS endpoint error: {e}")
         return jsonify({'error': f'TTS failed: {str(e)}'}), 500
 
-
 @app.route('/translation-pwa/api/translation/text', methods=['POST'])
 def translate_text_endpoint():
     """Translate text directly"""
@@ -1572,7 +1601,7 @@ def translate_text_endpoint():
         if not conversation_id:
             return jsonify({'error': 'Conversation ID is required'}), 400
         
-        # Get conversation details and add message in one transaction
+        # Get conversation details
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -1588,8 +1617,7 @@ def translate_text_endpoint():
             input_lang, output_lang, user_email = conversation
         
             # Translate the text
-            translator = GoogleTranslator(source=input_lang, target=output_lang)
-            translated_text = translator.translate(text)
+            translated_text = translate_text(text, input_lang, output_lang)
             
             # Add message to conversation
             cursor.execute("""
@@ -1609,6 +1637,8 @@ def translate_text_endpoint():
         
     except Exception as e:
         logger.error(f"Text translation error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/translation-pwa/api/conversations/<conversation_id>/name', methods=['PUT'])
@@ -1894,6 +1924,10 @@ def cleanup_old_conversations():
 if __name__ == '__main__':
     # Initialize everything
     init_database()
+
+    logger.info("Setting up Argos Translate packages...")
+    ensure_argos_packages()
+
     init_speech_recognition()
     
     # Skip background model loading to avoid download conflicts

@@ -1318,7 +1318,6 @@
                         <div class="form-group">
                             <label for="inputLanguage">Input Language</label>
                             <select id="inputLanguage">
-                                <option value="auto">Auto-detect</option>
                             </select>
                         </div>
                         <button class="swap-btn" onclick="swapLanguages()" title="Swap languages">⇄</button>
@@ -1419,7 +1418,6 @@
                 <div style="display: flex; flex-direction: column; align-items: center;">
                     <label style="font-size: 14px; color: #374151; margin-bottom: 8px; font-weight: 600;">From</label>
                     <select id="modalInputLang" style="padding: 12px; border-radius: 8px; border: 2px solid #e5e7eb; font-size: 16px; min-width: 140px;">
-                        <option value="auto">Auto-detect</option>
                     </select>
                 </div>
                 <span style="font-size: 28px; color: #3b82f6;">→</span>
@@ -1500,7 +1498,6 @@
             'hi': 'Hindi',
             'tl': 'Filipino',
             'ko': 'Korean',
-            'auto': 'auto'
         };
         
         function getLanguageName(code) {
@@ -1556,7 +1553,7 @@
                 const outputSelect = document.getElementById('outputLanguage');
                 
                 // Clear existing options (except auto-detect for input)
-                inputSelect.innerHTML = '<option value="auto">Auto-detect</option>';
+                inputSelect.innerHTML = '<option value="end">English</option>';
                 outputSelect.innerHTML = '';
                 
                 availableLanguages.forEach(lang => {
@@ -1903,7 +1900,7 @@
         
         async function startConversation() {
             // Get language settings from user selection
-            const inputLang = document.getElementById('inputLanguage')?.value || 'auto';
+	    const inputLang = document.getElementById('inputLanguage')?.value || 'en';
             const outputLang = document.getElementById('outputLanguage')?.value || 'en';
             const autoEmail = false;
             
@@ -2005,7 +2002,7 @@
             const outputSelect = document.getElementById('modalOutputLang');
             
             // Clear existing options (except auto-detect for input)
-            inputSelect.innerHTML = '<option value="auto">Auto-detect</option>';
+            inputSelect.innerHTML = '<option value="en">English</option>';
             outputSelect.innerHTML = '';
             
             availableLanguages.forEach(lang => {
@@ -2029,7 +2026,7 @@
         
         function showLanguageModal() {
             // Get current language settings from main settings
-            const currentInputLang = document.getElementById('inputLanguage')?.value || 'auto';
+            const currentInputLang = document.getElementById('inputLanguage')?.value || 'en';
             const currentOutputLang = document.getElementById('outputLanguage')?.value || 'en';
             
             // Populate modal with current settings
@@ -2293,7 +2290,7 @@
                         timestamp: new Date().toISOString(),
                         original_text: data.original_text,
                         translated_text: data.translated_text,
-                        input_language: currentConversation?.input_language || 'auto',
+                        input_language: currentConversation?.input_language || 'en',
                         output_language: currentConversation?.output_language || 'en'
                     };
                     addMessageToDisplay(messageObj, 'participant-1');
@@ -2336,7 +2333,7 @@
                         timestamp: new Date().toISOString(),
                         original_text: data.original_text,
                         translated_text: data.translated_text,
-                        input_language: currentConversation?.input_language || 'auto',
+                        input_language: currentConversation?.input_language || 'en',
                         output_language: currentConversation?.output_language || 'en'
                     };
                     addMessageToDisplay(messageObj, 'participant-2');
@@ -2542,11 +2539,11 @@
             const participantName = speaker === 'participant-1' ? currentParticipant1Name : currentParticipant2Name;
             
             // Get actual language settings from the message or current conversation settings
-            const inputLang = message.input_language || currentConversation?.input_language || 'auto';
+            const inputLang = message.input_language || currentConversation?.input_language || 'en';
             const outputLang = message.output_language || currentConversation?.output_language || 'en';
             
             // Format language display
-            const inputLangDisplay = inputLang === 'auto' ? 'auto' : getLanguageName(inputLang);
+            const inputLangDisplay = getLanguageName(inputLang || 'en');
             const outputLangDisplay = getLanguageName(outputLang);
             
             messageDiv.innerHTML = `
@@ -3059,8 +3056,8 @@
             const inputValue = inputSelect.value;
             const outputValue = outputSelect.value;
             
-            inputSelect.value = outputValue === 'auto' ? 'auto' : outputValue;
-            outputSelect.value = inputValue === 'auto' ? 'en' : inputValue;
+            inputSelect.value = outputValue || 'en' : outputValue;
+            outputSelect.value = inputValue || 'en' : inputValue;
             
             // If there's an active conversation, update the conversation languages
             if (currentConversationId) {
