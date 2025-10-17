@@ -31,7 +31,7 @@ from flask_cors import CORS
 import whisper
 import torch
 import numpy as np
-from deep_translator import GoogleTranslator
+from transformers import pipeline
 from pydub import AudioSegment
 import io
 import ffmpeg
@@ -152,6 +152,8 @@ whisper_model = None
 tts_engine = None
 coqui_tts_engine = None
 recognizer = None
+
+translation_pipelines = {}
 
 @dataclass
 class Conversation:
@@ -695,27 +697,71 @@ def coqui_tts(text: str, language: str) -> bytes:
         return b''
 
 
-# DR TTS removed - using Coqui XTTS-v2 for all languages including Danish
+def get_translation_pipeline(from_lang: str, to_lang: str):
+    """Get or create a Helsinki-NLP translation pipeline (open-source, no external APIs)"""
+    global translation_pipelines
+    
+    # Language code mapping for Helsinki-NLP models
+    lang_map = {
+        'da': 'da', 'en': 'en', 'fr': 'fr', 'es': 'es', 'pt': 'pt',
+        'it': 'it', 'ur': 'ur', 'tr': 'tr', 'sr': 'sr', 'pl': 'pl',
+        'uk': 'uk', 'hi': 'hi', 'tl': 'fil', 'ko': 'ko'
+    }
+    
+    src = lang_map.get(from_lang, from_lang)
+    tgt = lang_map.get(to_lang, to_lang)
+    
+    # If same language, no translation needed
+    if src == tgt:
+        return None
+    
+    # Create cache key
+    cache_key = f"{src}-{tgt}"
+    
+    # Return cached pipeline if exists
+    if cache_key in translation_pipelines:
+        return translation_pipelines[cache_key]
+    
+    try:
+        # Helsinki-NLP model format: opus-mt-{src}-{tgt}
+        model_name = f"Helsinki-NLP/opus-mt-{src}-{tgt}"
+        logger.info(f"Loading Helsinki-NLP model: {model_name}")
+        
+        # Load with GPU if available
+        device = 0 if torch.cuda.is_available() else -1
+        pipeline_obj = pipeline("translation", model=model_name, device=device)
+        
+        translation_pipelines[cache_key] = pipeline_obj
+        logger.info(f"Translation model loaded: {src}→{tgt}")
+        return pipeline_obj
+        
+    except Exception as e:
+        logger.error(f"Failed to load Helsinki-NLP model for {src}→{tgt}: {e}")
+        return None
 
 def translate_text(text: str, from_lang: str, to_lang: str) -> str:
-    """Translate text using Google Translate via deep-translator"""
+    """Translate text using Helsinki-NLP (100% open-source, no external APIs)"""
     try:
         if not text.strip():
             return ""
         
-        # Handle auto-detect - deep-translator uses 'auto' directly
-        if from_lang == 'auto':
-            from_lang = 'auto'
+        # Get translation pipeline
+        pipeline_obj = get_translation_pipeline(from_lang, to_lang)
         
-        translator = GoogleTranslator(source=from_lang, target=to_lang)
-        result = translator.translate(text)
+        if pipeline_obj is None:
+            logger.warning(f"No translation available for {from_lang}→{to_lang}, returning original text")
+            return text
         
-        return result
+        # Translate
+        result = pipeline_obj(text, max_length=512)
+        translated = result[0]['translation_text'] if result else text
+        
+        logger.info(f"Translated {from_lang}→{to_lang}: {text[:50]}...")
+        return translated
         
     except Exception as e:
-        logger.error(f"Translation error: {e}")
+        logger.error(f"Translation error ({from_lang}→{to_lang}): {e}")
         return text
-
 
 def text_to_speech(text: str, language: str) -> bytes:
     """Convert text to speech using Coqui XTTS-v2 for all languages (100% local, open source)"""
