@@ -3056,9 +3056,9 @@
             const inputValue = inputSelect.value;
             const outputValue = outputSelect.value;
             
-            inputSelect.value = outputValue || 'en' : outputValue;
-            outputSelect.value = inputValue || 'en' : inputValue;
-            
+            inputSelect.value = outputValue || 'en';
+	    outputSelect.value = inputValue || 'en';
+
             // If there's an active conversation, update the conversation languages
             if (currentConversationId) {
                 updateConversationLanguagesFromSettings();
